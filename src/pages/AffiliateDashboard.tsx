@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Home, CheckSquare, User, Wallet, Headphones, ChevronLeft, ChevronRight, ExternalLink, Upload, ArrowLeft, Send, MessageCircle, Menu } from 'lucide-react';
+import { LogOut, Home, CheckSquare, User, Wallet, Headphones, ChevronLeft, ChevronRight, ExternalLink, Upload, ArrowLeft, Send, MessageCircle, Menu, Banknote } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 
-type Panel = 'home' | 'tasks' | 'profile' | 'wallet' | 'support';
+type Panel = 'home' | 'tasks' | 'profile' | 'wallet' | 'support' | 'withdrawals';
 
 const slides = [
   { title: 'Marketing Digital', desc: 'Alcance milhões de clientes online', colors: 'from-blue-600 to-cyan-500' },
@@ -29,6 +29,7 @@ const menuItems: { id: Panel; label: string; icon: any }[] = [
   { id: 'tasks', label: 'Tarefas', icon: CheckSquare },
   { id: 'profile', label: 'Meu Perfil', icon: User },
   { id: 'wallet', label: 'Minha Carteira', icon: Wallet },
+  { id: 'withdrawals', label: 'Saques', icon: Banknote },
   { id: 'support', label: 'Suporte Técnico', icon: Headphones },
 ];
 
@@ -47,6 +48,7 @@ const AffiliateDashboard = () => {
   const [rejectedTasks, setRejectedTasks] = useState<string[]>([]);
   const [balance, setBalance] = useState(0);
   const [withdrawAmount, setWithdrawAmount] = useState('');
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [supportForm, setSupportForm] = useState({ name: '', email: '', subject: '', message: '' });
 
   useEffect(() => {
@@ -81,6 +83,8 @@ const AffiliateDashboard = () => {
     setPendingTasks(userSubs.filter((s: any) => s.status === 'pending').map((s: any) => s.taskId));
     setRejectedTasks(userSubs.filter((s: any) => s.status === 'rejected').map((s: any) => s.taskId));
     setBalance(parseFloat(localStorage.getItem(`fv_balance_${user.id}`) || '0'));
+    const allWithdrawals = JSON.parse(localStorage.getItem('fv_withdrawals') || '[]');
+    setWithdrawals(allWithdrawals.filter((w: any) => w.userId === user.id));
   }, [user, panel]);
 
   const saveProfile = () => {
@@ -97,12 +101,14 @@ const AffiliateDashboard = () => {
 
   const validateTask = (taskId: string) => {
     if (!taskUploads[taskId]) { toast.error('Envie uma captura primeiro'); return; }
+    const userProfile = JSON.parse(localStorage.getItem(`fv_profile_${user!.id}`) || '{}');
     const subs = JSON.parse(localStorage.getItem('fv_task_submissions') || '[]');
     subs.push({
       id: crypto.randomUUID(),
       taskId,
       userId: user!.id,
       userEmail: user!.email,
+      userName: userProfile.fullName || user!.email,
       screenshot: taskUploads[taskId],
       status: 'pending',
       date: new Date().toISOString(),
@@ -111,6 +117,34 @@ const AffiliateDashboard = () => {
     setPendingTasks(prev => [...prev, taskId]);
     setTaskUploads(prev => { const n = { ...prev }; delete n[taskId]; return n; });
     toast.success('Tarefa enviada para validação!');
+  };
+
+  const handleWithdraw = () => {
+    const amount = parseFloat(withdrawAmount);
+    if (!amount || amount <= 0) { toast.error('Insira um valor válido'); return; }
+    if (amount > balance) { toast.error('Saldo insuficiente'); return; }
+    if (!profile.bankAccount) { toast.error('Registe sua conta bancária no Meu Perfil'); return; }
+
+    const newBalance = balance - amount;
+    localStorage.setItem(`fv_balance_${user!.id}`, String(newBalance));
+    setBalance(newBalance);
+
+    const allWithdrawals = JSON.parse(localStorage.getItem('fv_withdrawals') || '[]');
+    const withdrawal = {
+      id: crypto.randomUUID(),
+      userId: user!.id,
+      userEmail: user!.email,
+      userName: profile.fullName || user!.email,
+      amount,
+      bankAccount: profile.bankAccount,
+      status: 'pending',
+      date: new Date().toISOString(),
+    };
+    allWithdrawals.push(withdrawal);
+    localStorage.setItem('fv_withdrawals', JSON.stringify(allWithdrawals));
+    setWithdrawals(prev => [...prev, withdrawal]);
+    setWithdrawAmount('');
+    toast.success(`Pedido de saque de ${amount} Kz enviado!`);
   };
 
   const handleLogout = () => { logout(); navigate('/affiliate-login'); };
@@ -122,6 +156,9 @@ const AffiliateDashboard = () => {
   };
 
   if (!user) return null;
+
+  // Filter out completed (approved) tasks so they don't show
+  const availableTasks = tasks.filter(t => !completedTasks.includes(t.id));
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
@@ -208,22 +245,9 @@ const AffiliateDashboard = () => {
             <h2 className="text-2xl font-bold mb-2 font-display">Completar tarefas hoje</h2>
             <p className="text-muted-foreground mb-6">{completedTasks.length}/{tasks.length} tarefas completas</p>
             <div className="grid gap-3">
-              {tasks.map(task => {
-                const isCompleted = completedTasks.includes(task.id);
+              {availableTasks.map(task => {
                 const isPending = pendingTasks.includes(task.id);
                 const isRejected = rejectedTasks.includes(task.id);
-
-                if (isCompleted) return (
-                  <div key={task.id} className="glass rounded-xl p-3 opacity-60">
-                    <div className="flex items-center gap-3">
-                      <div className="w-24 h-16 rounded-lg bg-green-500/20 flex items-center justify-center text-green-400 text-xs font-medium shrink-0">✓ Validada</div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground line-through">{task.title}</p>
-                        <p className="text-xs text-green-400">+50 Kz adicionado</p>
-                      </div>
-                    </div>
-                  </div>
-                );
 
                 return (
                   <div key={task.id} className="glass rounded-xl p-3">
@@ -254,6 +278,7 @@ const AffiliateDashboard = () => {
                   </div>
                 );
               })}
+              {availableTasks.length === 0 && <p className="text-muted-foreground">Todas as tarefas foram concluídas! 🎉</p>}
             </div>
           </div>
         )}
@@ -303,20 +328,41 @@ const AffiliateDashboard = () => {
               <div className="glass rounded-2xl p-6">
                 <p className="text-sm text-muted-foreground mb-2">Fundo a Retirar</p>
                 <Input type="number" placeholder="Valor em Kz" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} className="bg-secondary/50 mb-3" />
-                <Button
-                  onClick={() => {
-                    const amount = parseFloat(withdrawAmount);
-                    if (!amount || amount <= 0) { toast.error('Insira um valor válido'); return; }
-                    if (amount > balance) { toast.error('Saldo insuficiente'); return; }
-                    if (!profile.bankAccount) { toast.error('Registe sua conta bancária no Meu Perfil'); return; }
-                    toast.success(`Pedido de saque de ${amount} Kz enviado!`);
-                    setWithdrawAmount('');
-                  }}
-                  className="w-full btn-glow-accent !rounded-xl"
-                >
+                <Button onClick={handleWithdraw} className="w-full btn-glow-accent !rounded-xl">
                   Sacar
                 </Button>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* WITHDRAWALS */}
+        {panel === 'withdrawals' && (
+          <div>
+            <button onClick={() => setPanel('home')} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
+              <ArrowLeft size={16} /> Voltar
+            </button>
+            <h2 className="text-2xl font-bold mb-6 font-display">Meus Saques</h2>
+            <div className="space-y-3 max-w-lg">
+              {withdrawals.map(w => (
+                <div key={w.id} className="glass rounded-xl p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-foreground">{w.amount.toFixed(2)} Kz</p>
+                      <p className="text-xs text-muted-foreground">{new Date(w.date).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">IBAN: {w.bankAccount}</p>
+                    </div>
+                    <span className={`text-xs font-semibold px-3 py-1 rounded-full ${
+                      w.status === 'approved' ? 'bg-green-500/20 text-green-400' :
+                      w.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                      'bg-yellow-500/20 text-yellow-400'
+                    }`}>
+                      {w.status === 'approved' ? '✓ Aprovado' : w.status === 'rejected' ? '✗ Rejeitado' : '⏳ Pendente'}
+                    </span>
+                  </div>
+                </div>
+              ))}
+              {withdrawals.length === 0 && <p className="text-muted-foreground">Nenhum saque realizado</p>}
             </div>
           </div>
         )}

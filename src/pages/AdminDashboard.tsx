@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download } from 'lucide-react';
+import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { toast } from 'sonner';
 
-type Panel = 'users' | 'tasks' | 'ads' | 'newTasks' | null;
+type Panel = 'users' | 'tasks' | 'ads' | 'newTasks' | 'withdrawals' | null;
 
 const AdminDashboard = () => {
   const { user, logout } = useAuth();
@@ -14,9 +14,12 @@ const AdminDashboard = () => {
   const [panel, setPanel] = useState<Panel>(null);
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [ads, setAds] = useState<any[]>([]);
   const [taskLinks, setTaskLinks] = useState<string[]>(Array(10).fill(''));
+  const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user || !user.isAdmin) { navigate('/affiliate-login'); return; }
@@ -29,6 +32,7 @@ const AdminDashboard = () => {
     setAds(JSON.parse(localStorage.getItem('fv_ads') || '[]'));
     const existing = JSON.parse(localStorage.getItem('fv_admin_tasks') || '[]');
     setTaskLinks(Array(10).fill('').map((_, i) => existing[i]?.url || ''));
+    setWithdrawals(JSON.parse(localStorage.getItem('fv_withdrawals') || '[]').filter((w: any) => w.status === 'pending'));
   }, [panel]);
 
   const approveTask = (sub: any) => {
@@ -62,25 +66,70 @@ const AdminDashboard = () => {
     toast.success('Mensagem apagada');
   };
 
+  const downloadBase64 = (data: string, filename: string) => {
+    const link = document.createElement('a');
+    link.href = data;
+    link.download = filename;
+    link.click();
+  };
+
   const saveTasks = () => {
     const tasks = taskLinks.map((url, i) => ({
-      id: `task-${i + 1}`,
+      id: `task-${Date.now()}-${i + 1}`,
       title: `Tarefa ${i + 1} - Assistir vídeo`,
-      url: url || 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    }));
+      url: url || '',
+    })).filter(t => t.url.trim() !== '');
     localStorage.setItem('fv_admin_tasks', JSON.stringify(tasks));
-    toast.success('Tarefas atualizadas!');
+    setTaskLinks(Array(10).fill(''));
+    toast.success('Tarefas atualizadas! Campos limpos para novas tarefas.');
+  };
+
+  const approveWithdrawal = (w: any) => {
+    const all = JSON.parse(localStorage.getItem('fv_withdrawals') || '[]');
+    const idx = all.findIndex((x: any) => x.id === w.id);
+    if (idx >= 0) {
+      all[idx].status = 'approved';
+      localStorage.setItem('fv_withdrawals', JSON.stringify(all));
+      setWithdrawals(prev => prev.filter(x => x.id !== w.id));
+      toast.success('Saque aprovado!');
+    }
+  };
+
+  const rejectWithdrawal = (w: any) => {
+    const all = JSON.parse(localStorage.getItem('fv_withdrawals') || '[]');
+    const idx = all.findIndex((x: any) => x.id === w.id);
+    if (idx >= 0) {
+      all[idx].status = 'rejected';
+      localStorage.setItem('fv_withdrawals', JSON.stringify(all));
+      // Return funds
+      const bal = parseFloat(localStorage.getItem(`fv_balance_${w.userId}`) || '0');
+      localStorage.setItem(`fv_balance_${w.userId}`, String(bal + w.amount));
+      setWithdrawals(prev => prev.filter(x => x.id !== w.id));
+      toast.info('Saque rejeitado. Fundos devolvidos.');
+    }
   };
 
   const handleLogout = () => { logout(); navigate('/affiliate-login'); };
 
   if (!user) return null;
 
+  const filteredUsers = users.filter(u => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    const profile = JSON.parse(localStorage.getItem(`fv_profile_${u.id}`) || '{}');
+    return (
+      u.email?.toLowerCase().includes(q) ||
+      profile.fullName?.toLowerCase().includes(q) ||
+      profile.phone?.toLowerCase().includes(q)
+    );
+  });
+
   const menuItems = [
     { id: 'users' as Panel, label: 'Ver Utilizadores', icon: Users },
     { id: 'tasks' as Panel, label: 'Validar Tarefas', icon: CheckSquare },
     { id: 'ads' as Panel, label: 'Publicidades', icon: Megaphone },
     { id: 'newTasks' as Panel, label: 'Novas Tarefas', icon: PlusCircle },
+    { id: 'withdrawals' as Panel, label: 'Ordem de Saque', icon: Banknote },
   ];
 
   return (
@@ -130,19 +179,32 @@ const AdminDashboard = () => {
             <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
               <ArrowLeft size={16} /> Voltar
             </button>
-            <h2 className="text-2xl font-bold mb-6 font-display">Utilizadores Registados ({users.length})</h2>
+            <h2 className="text-2xl font-bold mb-4 font-display">Utilizadores Registados ({users.length})</h2>
+            <div className="relative mb-4 max-w-md">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Pesquisar por nome, email ou telefone..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="bg-secondary/50 pl-10"
+              />
+            </div>
             <div className="space-y-2">
-              {users.map(u => (
-                <button
-                  key={u.id}
-                  onClick={() => setSelectedUser(u)}
-                  className="w-full glass rounded-xl p-4 text-left hover:border-primary/50 transition-colors"
-                >
-                  <p className="font-medium text-foreground">{u.email}</p>
-                  <p className="text-xs text-muted-foreground">ID: {u.id}</p>
-                </button>
-              ))}
-              {users.length === 0 && <p className="text-muted-foreground">Nenhum utilizador registado</p>}
+              {filteredUsers.map(u => {
+                const profile = JSON.parse(localStorage.getItem(`fv_profile_${u.id}`) || '{}');
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => setSelectedUser(u)}
+                    className="w-full glass rounded-xl p-4 text-left hover:border-primary/50 transition-colors"
+                  >
+                    <p className="font-medium text-foreground">{profile.fullName || u.email}</p>
+                    <p className="text-xs text-muted-foreground">Email: {u.email}</p>
+                    {profile.phone && <p className="text-xs text-muted-foreground">Tel: {profile.phone}</p>}
+                  </button>
+                );
+              })}
+              {filteredUsers.length === 0 && <p className="text-muted-foreground">Nenhum utilizador encontrado</p>}
             </div>
           </div>
         )}
@@ -208,10 +270,24 @@ const AdminDashboard = () => {
                 <div key={sub.id} className="glass rounded-2xl p-4">
                   <div className="flex items-start gap-4">
                     {sub.screenshot && (
-                      <img src={sub.screenshot} alt="Captura" className="w-32 h-24 object-cover rounded-lg border border-border" />
+                      <div className="shrink-0">
+                        <img
+                          src={sub.screenshot}
+                          alt="Captura"
+                          className="w-32 h-24 object-cover rounded-lg border border-border cursor-pointer hover:opacity-80 transition-opacity"
+                          onClick={() => setPreviewImage(sub.screenshot)}
+                        />
+                        <button
+                          onClick={() => window.open(sub.screenshot, '_blank')}
+                          className="text-xs text-primary hover:underline mt-1 flex items-center gap-1"
+                        >
+                          <Eye size={12} /> Abrir imagem
+                        </button>
+                      </div>
                     )}
                     <div className="flex-1">
-                      <p className="font-medium text-foreground">{sub.userEmail}</p>
+                      <p className="font-medium text-foreground">{sub.userName || sub.userEmail}</p>
+                      <p className="text-sm text-muted-foreground">Email: {sub.userEmail}</p>
                       <p className="text-sm text-muted-foreground">Tarefa: {sub.taskId}</p>
                       <p className="text-xs text-muted-foreground">{new Date(sub.date).toLocaleString()}</p>
                     </div>
@@ -248,6 +324,7 @@ const AdminDashboard = () => {
                       { label: 'Email', value: ad.email },
                       { label: 'Detalhes', value: ad.details },
                       { label: 'Banco', value: ad.bank },
+                      { label: 'Plano', value: ad.plan || 'N/A' },
                       { label: 'Arquivo', value: ad.fileName || 'N/A' },
                       { label: 'Comprovativo', value: ad.receiptName || 'N/A' },
                       { label: 'Data', value: new Date(ad.date).toLocaleString() },
@@ -255,10 +332,27 @@ const AdminDashboard = () => {
                       <p key={item.label}><span className="text-muted-foreground">{item.label}:</span> <span className="text-foreground">{item.value}</span></p>
                     ))}
                   </div>
-                  <div className="flex gap-2 mt-4">
-                    <Button size="sm" variant="outline" className="text-xs">
-                      <Download size={14} className="mr-1" /> Baixar Publicidade
-                    </Button>
+                  <div className="flex flex-wrap gap-2 mt-4">
+                    {ad.fileData && (
+                      <Button size="sm" variant="outline" className="text-xs" onClick={() => downloadBase64(ad.fileData, ad.fileName || 'publicidade')}>
+                        <Download size={14} className="mr-1" /> Baixar Publicidade
+                      </Button>
+                    )}
+                    {ad.receiptData && (
+                      <Button size="sm" variant="outline" className="text-xs" onClick={() => downloadBase64(ad.receiptData, ad.receiptName || 'comprovativo')}>
+                        <Download size={14} className="mr-1" /> Baixar Comprovativo
+                      </Button>
+                    )}
+                    {ad.fileData && (
+                      <Button size="sm" variant="outline" className="text-xs" onClick={() => window.open(ad.fileData, '_blank')}>
+                        <Eye size={14} className="mr-1" /> Ver Arquivo
+                      </Button>
+                    )}
+                    {ad.receiptData && (
+                      <Button size="sm" variant="outline" className="text-xs" onClick={() => window.open(ad.receiptData, '_blank')}>
+                        <Eye size={14} className="mr-1" /> Ver Comprovativo
+                      </Button>
+                    )}
                     <Button size="sm" variant="destructive" onClick={() => deleteAd(ad.id)} className="text-xs">
                       <Trash2 size={14} className="mr-1" /> Apagar Mensagem
                     </Button>
@@ -297,7 +391,48 @@ const AdminDashboard = () => {
             </div>
           </div>
         )}
+
+        {/* WITHDRAWALS */}
+        {panel === 'withdrawals' && (
+          <div>
+            <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
+              <ArrowLeft size={16} /> Voltar
+            </button>
+            <h2 className="text-2xl font-bold mb-6 font-display">Ordem de Saque ({withdrawals.length} pendentes)</h2>
+            <div className="space-y-4">
+              {withdrawals.map(w => (
+                <div key={w.id} className="glass rounded-2xl p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-foreground">{w.userName || w.userEmail}</p>
+                      <p className="text-sm text-muted-foreground">Email: {w.userEmail}</p>
+                      <p className="text-sm text-foreground font-bold">{w.amount.toFixed(2)} Kz</p>
+                      <p className="text-xs text-muted-foreground">IBAN: {w.bankAccount}</p>
+                      <p className="text-xs text-muted-foreground">{new Date(w.date).toLocaleString()}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => approveWithdrawal(w)} className="bg-green-600 hover:bg-green-700">
+                        <Check size={16} />
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => rejectWithdrawal(w)}>
+                        <X size={16} />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {withdrawals.length === 0 && <p className="text-muted-foreground">Nenhum pedido de saque pendente</p>}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Image Preview Modal */}
+      {previewImage && (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4" onClick={() => setPreviewImage(null)}>
+          <img src={previewImage} alt="Preview" className="max-w-full max-h-full rounded-xl" />
+        </div>
+      )}
     </div>
   );
 };
