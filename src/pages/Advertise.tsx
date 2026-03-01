@@ -15,14 +15,36 @@ const bankIbans: Record<string, string> = {
 
 const banks = ['BAI', 'BFA', 'BCI', 'Banco Sol', 'BPC', 'BIC', 'Banco Atlântico'];
 
+const adPlans = [
+  { value: 'canal-nosso', label: 'Publicitar no nosso canal - 15.000Kz' },
+  { value: 'canal-seu', label: 'Publicitar o seu canal - 10.000Kz' },
+  { value: 'plus-ultra', label: 'Pacote Plus Ultra - 30.000Kz' },
+];
+
 const Advertise = () => {
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ name: '', company: '', email: '', details: '', file: null as File | null });
   const [bank, setBank] = useState('');
+  const [plan, setPlan] = useState('');
   const [receipt, setReceipt] = useState<File | null>(null);
 
-  const handleSubmit = () => {
+  const toBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleSubmit = async () => {
     if (!bank) { toast.error('Selecione um banco'); return; }
+    if (!plan) { toast.error('Selecione um plano'); return; }
+
+    let fileData = '';
+    let receiptData = '';
+    if (form.file) fileData = await toBase64(form.file);
+    if (receipt) receiptData = await toBase64(receipt);
+
     const ads = JSON.parse(localStorage.getItem('fv_ads') || '[]');
     ads.push({
       id: crypto.randomUUID(),
@@ -31,8 +53,11 @@ const Advertise = () => {
       email: form.email,
       details: form.details,
       fileName: form.file?.name || '',
+      fileData,
       bank,
+      plan: adPlans.find(p => p.value === plan)?.label || plan,
       receiptName: receipt?.name || '',
+      receiptData,
       date: new Date().toISOString(),
     });
     localStorage.setItem('fv_ads', JSON.stringify(ads));
@@ -40,6 +65,7 @@ const Advertise = () => {
     setStep(1);
     setForm({ name: '', company: '', email: '', details: '', file: null });
     setBank('');
+    setPlan('');
     setReceipt(null);
   };
 
@@ -101,6 +127,20 @@ const Advertise = () => {
                 <p className="font-mono font-bold text-primary mt-1">IBAN {bankIbans[bank]}</p>
               </div>
             )}
+
+            <div>
+              <label className="block text-sm font-medium text-muted-foreground mb-2">Escolha o plano de publicidade</label>
+              <Select value={plan} onValueChange={setPlan}>
+                <SelectTrigger className="bg-secondary/50">
+                  <SelectValue placeholder="Selecione o plano" />
+                </SelectTrigger>
+                <SelectContent>
+                  {adPlans.map(p => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
             <div>
               <label className="block text-sm font-medium text-muted-foreground mb-2">Envie seu comprovativo</label>
