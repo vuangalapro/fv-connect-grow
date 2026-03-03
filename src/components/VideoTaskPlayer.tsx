@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, ExternalLink, Upload, Check, X, Copy, AlertTriangle, Loader2, Smartphone, Monitor } from 'lucide-react';
+import { Play, Pause, ExternalLink, Upload, Check, X, Copy, AlertTriangle, Loader2, Smartphone, Monitor, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateUniqueCommentCode, generateDeviceFingerprint, formatTime } from '@/lib/fraudPrevention';
 import { performOCR, validateOCRMatch } from '@/lib/ocrService';
+import { useVideoTask } from '@/contexts/VideoTaskContext';
 
 export interface VideoSubmissionData {
   screenshotData: string;
@@ -231,6 +232,11 @@ export default function VideoTaskPlayer({
   const [ocrProgress, setOcrProgress] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
 
+  // Video task context for single popup lock
+  const { activeVideoTaskId, openVideoTask, closeVideoTask, isAnyVideoTaskOpen } = useVideoTask();
+  const isThisTaskOpen = activeVideoTaskId === taskId;
+  const isOtherTaskOpen = isAnyVideoTaskOpen && !isThisTaskOpen;
+
   const [uniqueCode, setUniqueCode] = useState<string>('');
   const [deviceFingerprint, setDeviceFingerprint] = useState<string>('');
   const [startTime, setStartTime] = useState<Date | null>(null);
@@ -291,7 +297,7 @@ export default function VideoTaskPlayer({
       // Save original overflow style
       const originalStyle = window.getComputedStyle(document.body).overflow;
       document.body.style.overflow = 'hidden';
-      
+
       return () => {
         document.body.style.overflow = originalStyle;
       };
@@ -447,6 +453,7 @@ export default function VideoTaskPlayer({
         setShowUpload(false);
         setSelectedFile(null);
         setIsOpen(false);
+        closeVideoTask();
         setCanSubmit(false);
         setWatchedTime(0);
         setUniqueCode('');
@@ -473,24 +480,42 @@ export default function VideoTaskPlayer({
   return (
     <div className="space-y-3">
       <Button
-        onClick={() => setIsOpen(true)}
-        className="w-full bg-red-600 hover:bg-red-700"
+        onClick={() => {
+          if (isOtherTaskOpen) {
+            toast.error('Você só pode executar uma tarefa por vez. Feche o vídeo atual para continuar.');
+            return;
+          }
+          if (!openVideoTask(taskId)) {
+            toast.error('Você só pode executar uma tarefa por vez. Feche o vídeo atual para continuar.');
+            return;
+          }
+          setIsOpen(true);
+        }}
+        disabled={isOtherTaskOpen}
+        className={`w-full ${isOtherTaskOpen ? 'bg-gray-500 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
       >
-        <Play size={18} className="mr-2" />
-        Assistir Vídeo
-        {isVideoCompleted && (
+        {isOtherTaskOpen ? (
+          <>
+            <Lock size={18} className="mr-2" />
+            Bloqueado
+          </>
+        ) : (
+          <>
+            <Play size={18} className="mr-2" />
+            Assistir Vídeo
+          </>
+        )}
+        {isVideoCompleted && !isOtherTaskOpen && (
           <Check size={16} className="ml-2 text-green-400" />
         )}
       </Button>
 
       {isOpen && (
         <div
-          className="fixed inset-0 z-[100] flex items-start justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm overflow-hidden"
-          style={isMobile ? { height: '100vh', width: '100vw' } : {}}
+          className="fixed inset-0 z-[100] flex items-start justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm overflow-hidden"
         >
           <div
-            className={`glass rounded-none sm:rounded-2xl p-3 sm:p-6 w-full ${isMobile ? 'h-screen min-h-screen overflow-y-auto' : 'max-w-3xl max-h-[90vh] overflow-auto'}`}
-            style={isMobile ? { height: '100%', display: 'flex', flexDirection: 'column' } : {}}
+            className="glass rounded-2xl p-4 sm:p-6 w-[90%] sm:w-full max-w-4xl max-h-[90vh] overflow-auto"
           >
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
@@ -501,7 +526,10 @@ export default function VideoTaskPlayer({
                 </h3>
               </div>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  setIsOpen(false);
+                  closeVideoTask();
+                }}
                 className="text-muted-foreground hover:text-foreground p-1"
               >
                 <X size={24} />
@@ -632,12 +660,10 @@ export default function VideoTaskPlayer({
       {/* Upload confirmation modal */}
       {showUpload && selectedFile && (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm overflow-hidden"
-          style={isMobile ? { height: '100vh', width: '100vw' } : {}}
+          className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm overflow-hidden"
         >
           <div
-            className={`glass rounded-none sm:rounded-2xl p-4 sm:p-6 w-full ${isMobile ? 'h-screen min-h-screen overflow-y-auto' : 'max-w-md'}`}
-            style={isMobile ? { height: '100%', display: 'flex', flexDirection: 'column' } : {}}
+            className="glass rounded-2xl p-4 sm:p-6 w-[90%] sm:w-full max-w-md overflow-auto"
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold">Confirmar Envio</h3>

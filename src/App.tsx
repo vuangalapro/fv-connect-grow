@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { VideoTaskProvider } from "@/contexts/VideoTaskContext";
 import Index from "./pages/Index";
 import About from "./pages/About";
 import Support from "./pages/Support";
@@ -21,18 +22,20 @@ const App = () => (
       <Toaster />
       <Sonner />
       <AuthProvider>
-        <BrowserRouter>
-          <Routes>
-            <Route path="/" element={<Index />} />
-            <Route path="/about" element={<About />} />
-            <Route path="/support" element={<Support />} />
-            <Route path="/advertise" element={<Advertise />} />
-            <Route path="/affiliate-login" element={<AffiliateLogin />} />
-            <Route path="/dashboard" element={<AffiliateDashboard />} />
-            <Route path="/admin" element={<AdminDashboard />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+        <VideoTaskProvider>
+          <BrowserRouter>
+            <Routes>
+              <Route path="/" element={<Index />} />
+              <Route path="/about" element={<About />} />
+              <Route path="/support" element={<Support />} />
+              <Route path="/advertise" element={<Advertise />} />
+              <Route path="/affiliate-login" element={<AffiliateLogin />} />
+              <Route path="/dashboard" element={<AffiliateDashboard />} />
+              <Route path="/admin" element={<AdminDashboard />} />
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </VideoTaskProvider>
       </AuthProvider>
     </TooltipProvider>
   </QueryClientProvider>
