@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu } from 'lucide-react';
+import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -119,7 +119,9 @@ const AdminDashboard = () => {
   const [ads, setAds] = useState<any[]>([]);
   const [taskCount, setTaskCount] = useState(4);
   const [taskLinks, setTaskLinks] = useState<string[]>(Array(4).fill(''));
-  const [existingTasks, setExistingTasks] = useState<Array<{ id: string; title: string; url: string; expires_at?: string }>>([]);
+  const [taskTypes, setTaskTypes] = useState<string[]>(Array(4).fill('video'));
+  const [taskRequiredTimes, setTaskRequiredTimes] = useState<number[]>(Array(4).fill(90));
+  const [existingTasks, setExistingTasks] = useState<Array<{ id: string; title: string; url: string; expires_at?: string; task_type?: string; required_time?: number }>>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [previewFile, setPreviewFile] = useState<{ data: string; title: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -224,11 +226,18 @@ const AdminDashboard = () => {
           .from('profiles')
           .select('id, full_name, email');
 
+        // Fetch tasks for video task info
+        const { data: tasksData } = await supabase
+          .from('tasks')
+          .select('id, title, task_type, required_time, url');
+
         const mergedSubmissions = (submissionsData || []).map(sub => {
           const profile = (profilesData || []).find(p => p.id === sub.user_id);
+          const task = (tasksData || []).find(t => t.id === sub.task_id);
           return {
             ...sub,
-            profiles: profile || { full_name: 'Unknown', email: 'N/A' }
+            profiles: profile || { full_name: 'Unknown', email: 'N/A' },
+            tasks: task || { title: 'Tarefa Desconhecida', task_type: 'link', required_time: 90, url: '' }
           };
         });
 
@@ -298,10 +307,14 @@ const AdminDashboard = () => {
 
   const approveTask = async (sub: any) => {
     try {
-      // 1. Update submission status
+      // 1. Update submission status with validation info
       const { error: subError } = await supabase
         .from('task_submissions')
-        .update({ status: 'approved' })
+        .update({
+          status: 'approved',
+          validated_by: user?.id,
+          validated_at: new Date().toISOString()
+        })
         .eq('id', sub.id);
 
       if (subError) {
@@ -548,6 +561,8 @@ const AdminDashboard = () => {
         .map((url, i) => ({
           title: `Tarefa ${existingCount + i + 1} - Assistir vídeo`,
           url: url || '',
+          task_type: taskTypes[i] || 'video',
+          required_time: taskRequiredTimes[i] || 90,
           expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
         }))
         .filter(t => t.url.trim() !== '');
@@ -1547,6 +1562,59 @@ const AdminDashboard = () => {
                       <p className="text-sm text-muted-foreground">Email: {sub.profiles?.email}</p>
                       <p className="text-sm text-muted-foreground">ID Tarefa: {sub.task_id}</p>
                       <p className="text-xs text-muted-foreground">{new Date(sub.created_at).toLocaleString()}</p>
+
+                      {/* Fraud Detection Info - Only show for video tasks */}
+                      {(sub.tasks?.task_type === 'video' || sub.unique_comment_code) && (
+                        <div className="mt-2 p-2 bg-muted/50 rounded-lg">
+                          {/* Risk Score */}
+                          {sub.risk_score > 0 && (
+                            <div className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${sub.risk_score >= 70 ? 'bg-red-500/20 text-red-400' :
+                              sub.risk_score >= 40 ? 'bg-yellow-500/20 text-yellow-400' :
+                                'bg-green-500/20 text-green-400'
+                              }`}>
+                              <AlertTriangle size={12} />
+                              Risco: {sub.risk_score}%
+                            </div>
+                          )}
+
+                          {/* Fraud Alert Status */}
+                          {sub.fraud_alert && (
+                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ml-2 ${sub.fraud_alert === 'suspeita' ? 'bg-red-500/20 text-red-400' :
+                              'bg-green-500/20 text-green-400'
+                              }`}>
+                              {sub.fraud_alert === 'suspeita' ? '🔴 SUSPEITA' : '🟢 CONFIÁVEL'}
+                            </span>
+                          )}
+
+                          {/* Watch Time */}
+                          {sub.watched_time && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              ⏱ Tempo assistido: {Math.floor(sub.watched_time / 60)}:{(sub.watched_time % 60).toString().padStart(2, '0')}
+                            </p>
+                          )}
+
+                          {/* Unique Code */}
+                          {sub.unique_comment_code && (
+                            <p className="text-xs mt-1">
+                              <span className="text-muted-foreground">Código:</span>{' '}
+                              <span className="font-mono text-purple-400">{sub.unique_comment_code}</span>
+                            </p>
+                          )}
+
+                          {/* OCR Extracted Code */}
+                          {sub.ocr_extracted_code && (
+                            <p className="text-xs mt-1">
+                              <span className="text-muted-foreground">OCR detectado:</span>{' '}
+                              <span className="font-mono">{sub.ocr_extracted_code}</span>
+                              {sub.ocr_confidence && (
+                                <span className="text-muted-foreground ml-1">
+                                  ({(sub.ocr_confidence * 100).toFixed(0)}%)
+                                </span>
+                              )}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <Button size="sm" onClick={() => approveTask(sub)} className="bg-green-600 hover:bg-green-700">
@@ -1778,7 +1846,7 @@ const AdminDashboard = () => {
 
                 <div className="space-y-3 max-h-[400px] overflow-auto pr-2">
                   {taskLinks.map((link, i) => (
-                    <div key={i}>
+                    <div key={i} className="space-y-2 p-3 bg-secondary/30 rounded-lg">
                       <label className="text-xs text-muted-foreground mb-1 block">Link da Tarefa {i + 1}</label>
                       <Input
                         placeholder="https://www.youtube.com/watch?v=..."
@@ -1790,6 +1858,40 @@ const AdminDashboard = () => {
                         }}
                         className="bg-secondary/50"
                       />
+                      <div className="flex gap-2">
+                        <div className="flex-1">
+                          <label className="text-xs text-muted-foreground mb-1 block">Tipo</label>
+                          <select
+                            value={taskTypes[i]}
+                            onChange={e => {
+                              const newTypes = [...taskTypes];
+                              newTypes[i] = e.target.value;
+                              setTaskTypes(newTypes);
+                            }}
+                            className="w-full bg-secondary/50 rounded-lg px-3 py-2 text-sm"
+                          >
+                            <option value="video">Vídeo YouTube</option>
+                            <option value="link">Link Normal</option>
+                          </select>
+                        </div>
+                        {taskTypes[i] === 'video' && (
+                          <div className="flex-1">
+                            <label className="text-xs text-muted-foreground mb-1 block">Tempo (seg)</label>
+                            <Input
+                              type="number"
+                              min={30}
+                              max={600}
+                              value={taskRequiredTimes[i]}
+                              onChange={e => {
+                                const newTimes = [...taskRequiredTimes];
+                                newTimes[i] = parseInt(e.target.value) || 90;
+                                setTaskRequiredTimes(newTimes);
+                              }}
+                              className="bg-secondary/50"
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -1811,6 +1913,16 @@ const AdminDashboard = () => {
                             <span className="text-xs text-orange-400 font-medium shrink-0 ml-2">
                               ⏱ {getRemainingTime(task.expires_at)}
                             </span>
+                          </div>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${task.task_type === 'video' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                              {task.task_type === 'video' ? '🎬 Vídeo' : '🔗 Link'}
+                            </span>
+                            {task.task_type === 'video' && task.required_time && (
+                              <span className="text-xs text-muted-foreground">
+                                {task.required_time}s mínimo
+                              </span>
+                            )}
                           </div>
                           <a
                             href={task.url}

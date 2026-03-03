@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import VideoTaskPlayer from '@/components/VideoTaskPlayer';
 
 const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'philipvuangala@gmail.com';
 
@@ -46,7 +47,7 @@ const AffiliateDashboard = () => {
 
   const [profile, setProfile] = useState({ fullName: '', age: '', address: '', gender: '', phone: '', bankName: '', bankAccount: '' });
   const [isEditing, setIsEditing] = useState(false);
-  const [tasks, setTasks] = useState<Array<{ id: string; title: string; url: string; expires_at?: string }>>([]);
+  const [tasks, setTasks] = useState<Array<{ id: string; title: string; url: string; expires_at?: string; task_type?: string; required_time?: number }>>([]);
   const [completedTasks, setCompletedTasks] = useState<string[]>([]);
   const [pendingTasks, setPendingTasks] = useState<string[]>([]);
   const [rejectedTasks, setRejectedTasks] = useState<string[]>([]);
@@ -453,7 +454,7 @@ const AffiliateDashboard = () => {
           .from('support_messages')
           .update({ affiliate_read: true })
           .eq('id', msgId);
-        
+
         if (!error) {
           setMyMessages(prev => prev.map(m =>
             m.id === msgId ? { ...m, affiliate_read: true } : m
@@ -474,12 +475,12 @@ const AffiliateDashboard = () => {
     <div className="min-h-screen flex flex-col md:flex-row">
       {/* Mobile Menu Overlay */}
       {mobileMenu && (
-        <div 
+        <div
           className="fixed inset-0 z-30 bg-background/80 backdrop-blur-sm md:hidden"
           onClick={() => setMobileMenu(false)}
         />
       )}
-      
+
       {/* Sidebar - Desktop only */}
       <div className="hidden md:flex glass md:w-64 md:h-screen md:sticky md:top-0 p-4 flex-col gap-2 shrink-0">
         <div className="mb-6">
@@ -595,32 +596,113 @@ const AffiliateDashboard = () => {
               {availableTasks.map(task => {
                 const isPending = pendingTasks.includes(task.id);
                 const isRejected = rejectedTasks.includes(task.id);
+                const isVideoTask = task.task_type === 'video';
 
                 return (
                   <div key={task.id} className="glass rounded-xl p-3">
-                    <div className="flex items-center gap-3">
-                      <a
-                        href={task.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => {
-                          if (user && !openedTasks.includes(task.id)) {
-                            supabase.from('opened_tasks').insert({ user_id: user.id, task_id: task.id }).then(() => {
-                              setOpenedTasks(prev => [...prev, task.id]);
+                    {isVideoTask ? (
+                      // Video Task with YouTube player
+                      <VideoTaskPlayer
+                        taskId={task.id}
+                        userId={user?.id || ''}
+                        videoUrl={task.url}
+                        requiredTime={task.required_time || 90}
+                        onTimeUpdate={(seconds) => {
+                          console.log('Video watched:', seconds, 'seconds');
+                        }}
+                        onReadyToSubmit={() => {
+                          console.log('Ready to submit for task:', task.id);
+                        }}
+                        onSubmit={async (submissionData) => {
+                          const { screenshotData, watchedTime, uniqueCommentCode, deviceFingerprint, startTime, watchSessionData, ocrResult } = submissionData;
+
+                          try {
+                            // Check if user already submitted this task
+                            const { data: existingSubmission } = await supabase
+                              .from('task_submissions')
+                              .select('id, status')
+                              .eq('task_id', task.id)
+                              .eq('user_id', user.id)
+                              .single();
+
+                            if (existingSubmission) {
+                              if (existingSubmission.status === 'approved') {
+                                toast.error('Já completaste esta tarefa!');
+                                return;
+                              } else if (existingSubmission.status === 'pending') {
+                                toast.error('Já enviaste esta tarefa! Aguarda validação.');
+                                return;
+                              } else if (existingSubmission.status === 'rejected') {
+                                // Allow resubmission - update instead of insert
+                                const { error } = await supabase
+                                  .from('task_submissions')
+                                  .update({
+                                    screenshot_url: screenshotData,
+                                    watched_time: watchedTime,
+                                    unique_comment_code: uniqueCommentCode,
+                                    device_fingerprint: deviceFingerprint,
+                                    start_time: startTime.toISOString(),
+                                    screenshot_uploaded: true,
+                                    ocr_extracted_code: ocrResult?.foundCodes?.join(', '),
+                                    ocr_confidence: ocrResult?.confidence,
+                                    watch_sessions: watchSessionData ? JSON.stringify(watchSessionData) : null,
+                                    status: 'pending',
+                                    created_at: new Date().toISOString()
+                                  })
+                                  .eq('id', existingSubmission.id);
+
+                                if (error) throw error;
+                                toast.success('Tarefa reenviada! Aguardando validação.');
+                                fetchData();
+                                return;
+                              }
+                            }
+
+                            // Calculate risk score based on OCR result
+                            let fraudAlert: 'confiavel' | 'suspeita' | null = null;
+                            let riskScore = 0;
+
+                            if (ocrResult) {
+                              // If OCR didn't find the code, it's suspicious
+                              if (!ocrResult.isMatch) {
+                                riskScore = 30;
+                                fraudAlert = 'suspeita';
+                              } else if (ocrResult.confidence > 0.7) {
+                                // High confidence OCR match = trustworthy
+                                fraudAlert = 'confiavel';
+                              }
+                            }
+
+                            const { error } = await supabase.from('task_submissions').insert({
+                              task_id: task.id,
+                              user_id: user.id,
+                              screenshot_url: screenshotData,
+                              watched_time: watchedTime,
+                              unique_comment_code: uniqueCommentCode,
+                              device_fingerprint: deviceFingerprint,
+                              start_time: startTime.toISOString(),
+                              screenshot_uploaded: true,
+                              ocr_extracted_code: ocrResult?.foundCodes?.join(', '),
+                              ocr_confidence: ocrResult?.confidence,
+                              risk_score: riskScore,
+                              fraud_alert: fraudAlert,
+                              watch_sessions: watchSessionData ? JSON.stringify(watchSessionData) : null,
+                              status: 'pending',
                             });
+
+                            if (error) throw error;
+
+                            toast.success('Tarefa concluída! Aguardando validação do administrador.');
+                            fetchData();
+                          } catch (error) {
+                            console.error('Submission error:', error);
+                            toast.error('Erro ao enviar a tarefa.');
                           }
                         }}
-                        className="w-24 h-16 rounded-lg bg-red-600/20 flex items-center justify-center shrink-0 hover:bg-red-600/30 transition-colors"
-                      >
-                        <ExternalLink size={16} className="text-red-400" />
-                      </a>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <p className="text-sm font-medium text-foreground">{task.title}</p>
-                          <span className="text-xs text-orange-400 font-medium shrink-0 ml-2">
-                            ⏱ {getRemainingTime(task.expires_at)}
-                          </span>
-                        </div>
+                      />
+                    ) : (
+                      // Regular link task
+                      <div className="flex items-center gap-3">
                         <a
                           href={task.url}
                           target="_blank"
@@ -632,22 +714,45 @@ const AffiliateDashboard = () => {
                               });
                             }
                           }}
-                          className="text-xs text-primary hover:underline truncate block"
-                        >Abrir no YouTube</a>
-                        {isPending && <p className="text-xs text-yellow-400 mt-1">⏳ Aguardando validação</p>}
-                        {isRejected && <p className="text-xs text-red-400 mt-1">✗ Rejeitada - Envie nova captura cumprindo os requisitos</p>}
-                      </div>
-                      {!isPending && (
-                        <div className="flex items-center gap-1 shrink-0">
-                          <label className="cursor-pointer">
-                            <input type="file" accept="image/jpeg,image/png" className="hidden" onChange={e => e.target.files?.[0] && handleTaskUpload(task.id, e.target.files[0])} />
-                            <div className="flex bg-primary/20 text-primary items-center gap-2 px-3 h-8 rounded-lg text-xs font-medium hover:bg-primary/30 transition-colors">
-                              <Upload size={14} /> Anexar captura
-                            </div>
-                          </label>
+                          className="w-24 h-16 rounded-lg bg-red-600/20 flex items-center justify-center shrink-0 hover:bg-red-600/30 transition-colors"
+                        >
+                          <ExternalLink size={16} className="text-red-400" />
+                        </a>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <p className="text-sm font-medium text-foreground">{task.title}</p>
+                            <span className="text-xs text-orange-400 font-medium shrink-0 ml-2">
+                              ⏱ {getRemainingTime(task.expires_at)}
+                            </span>
+                          </div>
+                          <a
+                            href={task.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => {
+                              if (user && !openedTasks.includes(task.id)) {
+                                supabase.from('opened_tasks').insert({ user_id: user.id, task_id: task.id }).then(() => {
+                                  setOpenedTasks(prev => [...prev, task.id]);
+                                });
+                              }
+                            }}
+                            className="text-xs text-primary hover:underline truncate block"
+                          >Abrir no YouTube</a>
+                          {isPending && <p className="text-xs text-yellow-400 mt-1">⏳ Aguardando validação</p>}
+                          {isRejected && <p className="text-xs text-red-400 mt-1">✗ Rejeitada - Envie nova captura cumprindo os requisitos</p>}
                         </div>
-                      )}
-                    </div>
+                        {!isPending && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <label className="cursor-pointer">
+                              <input type="file" accept="image/jpeg,image/png" className="hidden" onChange={e => e.target.files?.[0] && handleTaskUpload(task.id, e.target.files[0])} />
+                              <div className="flex bg-primary/20 text-primary items-center gap-2 px-3 h-8 rounded-lg text-xs font-medium hover:bg-primary/30 transition-colors">
+                                <Upload size={14} /> Anexar captura
+                              </div>
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -724,7 +829,7 @@ const AffiliateDashboard = () => {
             <button onClick={() => setPanel('home')} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
               <ArrowLeft size={16} /> Voltar
             </button>
-            
+
             {/* Warning if profile not complete */}
             {!isProfileComplete() && (
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 mb-6 flex items-start gap-3">
@@ -738,8 +843,8 @@ const AffiliateDashboard = () => {
 
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold font-display">Meu Perfil</h2>
-              <Button 
-                onClick={() => setIsEditing(!isEditing)} 
+              <Button
+                onClick={() => setIsEditing(!isEditing)}
                 variant={isEditing ? "outline" : "default"}
                 className={isEditing ? "!rounded-xl" : "btn-glow-primary !rounded-xl"}
               >
@@ -760,50 +865,50 @@ const AffiliateDashboard = () => {
                   </div>
                   <h3 className="text-lg font-semibold">Informações Pessoais</h3>
                 </div>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Nome Completo</label>
                     {isEditing ? (
-                      <Input 
-                        value={profile.fullName} 
-                        onChange={e => setProfile({ ...profile, fullName: e.target.value })} 
-                        className="bg-secondary/50" 
+                      <Input
+                        value={profile.fullName}
+                        onChange={e => setProfile({ ...profile, fullName: e.target.value })}
+                        className="bg-secondary/50"
                         placeholder="Seu nome completo"
                       />
                     ) : (
                       <p className="text-foreground font-medium">{profile.fullName || 'Não definido'}</p>
                     )}
                   </div>
-                  
+
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Idade</label>
                     {isEditing ? (
-                      <Input 
-                        value={profile.age} 
-                        onChange={e => setProfile({ ...profile, age: e.target.value })} 
-                        className="bg-secondary/50" 
+                      <Input
+                        value={profile.age}
+                        onChange={e => setProfile({ ...profile, age: e.target.value })}
+                        className="bg-secondary/50"
                         placeholder="Sua idade"
                       />
                     ) : (
                       <p className="text-foreground font-medium">{profile.age || 'Não definido'}</p>
                     )}
                   </div>
-                  
+
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Morada</label>
                     {isEditing ? (
-                      <Input 
-                        value={profile.address} 
-                        onChange={e => setProfile({ ...profile, address: e.target.value })} 
-                        className="bg-secondary/50" 
+                      <Input
+                        value={profile.address}
+                        onChange={e => setProfile({ ...profile, address: e.target.value })}
+                        className="bg-secondary/50"
                         placeholder="Sua morada"
                       />
                     ) : (
                       <p className="text-foreground font-medium">{profile.address || 'Não definido'}</p>
                     )}
                   </div>
-                  
+
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Género</label>
                     {isEditing ? (
@@ -822,14 +927,14 @@ const AffiliateDashboard = () => {
                       <p className="text-foreground font-medium">{profile.gender || 'Não definido'}</p>
                     )}
                   </div>
-                  
+
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Telefone</label>
                     {isEditing ? (
-                      <Input 
-                        value={profile.phone} 
-                        onChange={e => setProfile({ ...profile, phone: e.target.value })} 
-                        className="bg-secondary/50" 
+                      <Input
+                        value={profile.phone}
+                        onChange={e => setProfile({ ...profile, phone: e.target.value })}
+                        className="bg-secondary/50"
                         placeholder="Seu número de telefone"
                       />
                     ) : (
@@ -847,7 +952,7 @@ const AffiliateDashboard = () => {
                   </div>
                   <h3 className="text-lg font-semibold">Informações Bancárias</h3>
                 </div>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Banco</label>
@@ -869,14 +974,14 @@ const AffiliateDashboard = () => {
                       <p className="text-foreground font-medium">{profile.bankName || 'Não definido'}</p>
                     )}
                   </div>
-                  
+
                   <div>
                     <label className="text-xs text-muted-foreground mb-1 block">Conta Bancária (IBAN)</label>
                     {isEditing ? (
-                      <Input 
-                        value={profile.bankAccount} 
-                        onChange={e => setProfile({ ...profile, bankAccount: e.target.value })} 
-                        className="bg-secondary/50 font-mono" 
+                      <Input
+                        value={profile.bankAccount}
+                        onChange={e => setProfile({ ...profile, bankAccount: e.target.value })}
+                        className="bg-secondary/50 font-mono"
                         placeholder="AO06 0000 0000 0000 0000 0000"
                       />
                     ) : (
@@ -984,10 +1089,10 @@ const AffiliateDashboard = () => {
                     <div
                       key={msg.id}
                       className={`p-3 rounded-lg cursor-pointer transition-colors ${msg.reply && !msg.affiliate_read
-                          ? 'bg-green-500/20 border border-green-500/30 hover:bg-green-500/30'
-                          : selectedMessage?.id === msg.id
-                            ? 'bg-primary/20 border border-primary/30'
-                            : 'bg-secondary/30 hover:bg-secondary/50'
+                        ? 'bg-green-500/20 border border-green-500/30 hover:bg-green-500/30'
+                        : selectedMessage?.id === msg.id
+                          ? 'bg-primary/20 border border-primary/30'
+                          : 'bg-secondary/30 hover:bg-secondary/50'
                         }`}
                       onClick={() => { setSelectedMessage(msg); markAsRead(msg.id); }}
                     >
