@@ -47,7 +47,7 @@ const AffiliateDashboard = () => {
   const [slide, setSlide] = useState(0);
   const [mobileMenu, setMobileMenu] = useState(false);
 
-  const [profile, setProfile] = useState({ fullName: '', age: '', address: '', gender: '', phone: '', bankName: '', bankAccount: '' });
+  const [profile, setProfile] = useState({ fullName: '', age: '', address: '', gender: '', phone: '', bankName: '', bankAccount: '', penaltyCredit: 100 });
   const [isEditing, setIsEditing] = useState(false);
   const [tasks, setTasks] = useState<Array<{ id: string; title: string; url: string; expires_at?: string; task_type?: string; required_time?: number }>>([]);
   const [completedTasks, setCompletedTasks] = useState<string[]>([]);
@@ -218,6 +218,7 @@ const AffiliateDashboard = () => {
             phone: profileData.phone || '',
             bankName: profileData.bank_name || '',
             bankAccount: profileData.bank_account || '',
+            penaltyCredit: profileData.penalty_credit ?? 100,
           });
         }
       };
@@ -938,6 +939,38 @@ const AffiliateDashboard = () => {
                       />
                     ) : (
                       <p className="text-foreground font-medium">{profile.phone || 'Não definido'}</p>
+                    )}
+                  </div>
+
+                  {/* Penalty Credit Display */}
+                  <div className="mt-6 pt-6 border-t border-border/50">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className={`w-10 h-10 rounded-xl ${profile.penaltyCredit <= 20 ? 'bg-red-500/20' : profile.penaltyCredit <= 50 ? 'bg-yellow-500/20' : 'bg-green-500/20'} flex items-center justify-center`}>
+                        <AlertTriangle className={profile.penaltyCredit <= 20 ? 'text-red-400' : profile.penaltyCredit <= 50 ? 'text-yellow-400' : 'text-green-400'} size={20} />
+                      </div>
+                      <div>
+                        <h3 className="text-lg font-semibold">Créditos de Penalty</h3>
+                        <p className="text-xs text-muted-foreground">Sistema antifraude</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-muted-foreground">Créditos disponíveis</span>
+                          <span className={`font-bold ${profile.penaltyCredit <= 20 ? 'text-red-400' : profile.penaltyCredit <= 50 ? 'text-yellow-400' : 'text-green-400'}`}>
+                            {profile.penaltyCredit}/100
+                          </span>
+                        </div>
+                        <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                          <div 
+                            className={`h-full transition-all ${profile.penaltyCredit <= 20 ? 'bg-red-500' : profile.penaltyCredit <= 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                            style={{ width: `${Math.max(0, profile.penaltyCredit)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    {profile.penaltyCredit <= 20 && (
+                      <p className="text-xs text-red-400 mt-2">⚠️ Atenção: Seus créditos estão muito baixos. Evite violações das regras.</p>
                     )}
                   </div>
                 </div>
