@@ -6,13 +6,71 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
+
+const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'philipvuangala@gmail.com';
 
 const Support = () => {
   const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    toast.success('Mensagem enviada com sucesso!');
+
+    try {
+      // Try to get user
+      const { data: { user } } = await supabase.auth.getUser();
+
+      // Always try to insert to database first
+      if (user) {
+        // Logged in user - submit to database
+        const { error: dbError } = await supabase.from('support_messages').insert({
+          user_id: user.id,
+          name: form.name,
+          email: form.email,
+          subject: form.subject,
+          message: form.message,
+        });
+
+        if (!dbError) {
+          toast.success('Mensagem enviada com sucesso! O nosso suporte entrará em contacto em breve.');
+          setForm({ name: '', email: '', subject: '', message: '' });
+          return;
+        }
+        
+        console.warn('Database submission failed:', dbError);
+      } else {
+        // User not logged in - try to insert with null user_id
+        const { error: dbError } = await supabase.from('support_messages').insert({
+          user_id: null,
+          name: form.name,
+          email: form.email,
+          subject: form.subject,
+          message: form.message,
+        });
+
+        if (!dbError) {
+          toast.success('Mensagem enviada com sucesso! O nosso suporte entrará em contacto em breve.');
+          setForm({ name: '', email: '', subject: '', message: '' });
+          return;
+        }
+        
+        console.warn('Database submission failed:', dbError);
+      }
+    } catch (err) {
+      console.warn('Error submitting to database:', err);
+    }
+
+    // Fallback: open email client
+    const emailSubject = encodeURIComponent(`Suporte Fv-Comércio: ${form.subject}`);
+    const emailBody = encodeURIComponent(
+      `Nome: ${form.name}\n` +
+      `Email: ${form.email}\n` +
+      `\n` +
+      `Mensagem:\n${form.message}`
+    );
+
+    window.open(`mailto:${SUPPORT_EMAIL}?subject=${emailSubject}&body=${emailBody}`);
+    toast.success('A abrir o seu cliente de email...');
     setForm({ name: '', email: '', subject: '', message: '' });
   };
 

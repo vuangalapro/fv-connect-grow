@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
 
 const bankIbans: Record<string, string> = {
   BAI: 'AO06.0040.0000.2735.1578.1014.2',
@@ -27,6 +28,38 @@ const Advertise = () => {
   const [bank, setBank] = useState('');
   const [plan, setPlan] = useState('');
   const [receipt, setReceipt] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          const maxDim = 800;
+
+          if (width > height && width > maxDim) {
+            height *= maxDim / width;
+            width = maxDim;
+          } else if (height > maxDim) {
+            width *= maxDim / height;
+            height = maxDim;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
+        };
+      };
+    });
+  };
 
   const toBase64 = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
@@ -40,33 +73,58 @@ const Advertise = () => {
     if (!bank) { toast.error('Selecione um banco'); return; }
     if (!plan) { toast.error('Selecione um plano'); return; }
 
+    setLoading(true);
+    const loadingToast = toast.loading('A processar pedido...');
+
     let fileData = '';
     let receiptData = '';
-    if (form.file) fileData = await toBase64(form.file);
-    if (receipt) receiptData = await toBase64(receipt);
 
-    const ads = JSON.parse(localStorage.getItem('fv_ads') || '[]');
-    ads.push({
-      id: crypto.randomUUID(),
-      name: form.name,
-      company: form.company,
-      email: form.email,
-      details: form.details,
-      fileName: form.file?.name || '',
-      fileData,
-      bank,
-      plan: adPlans.find(p => p.value === plan)?.label || plan,
-      receiptName: receipt?.name || '',
-      receiptData,
-      date: new Date().toISOString(),
-    });
-    localStorage.setItem('fv_ads', JSON.stringify(ads));
-    toast.success('Pagamento registado com sucesso! A equipe irá analisar.');
-    setStep(1);
-    setForm({ name: '', company: '', email: '', details: '', file: null });
-    setBank('');
-    setPlan('');
-    setReceipt(null);
+    try {
+      if (form.file) {
+        if (form.file.type.startsWith('image/')) {
+          fileData = await compressImage(form.file);
+        } else {
+          fileData = await toBase64(form.file);
+        }
+      }
+
+      if (receipt) {
+        if (receipt.type.startsWith('image/')) {
+          receiptData = await compressImage(receipt);
+        } else {
+          receiptData = await toBase64(receipt);
+        }
+      }
+
+      const { error } = await supabase.from('ads').insert({
+        name: form.name,
+        company: form.company,
+        email: form.email,
+        details: form.details,
+        file_name: form.file?.name || '',
+        file_data: fileData,
+        bank,
+        plan: adPlans.find(p => p.value === plan)?.label || plan,
+        receipt_name: receipt?.name || '',
+        receipt_data: receiptData,
+      });
+
+      if (error) throw error;
+
+      toast.dismiss(loadingToast);
+      toast.success('Pedido de publicidade enviado com sucesso! A nossa equipe irá analisar.');
+      setStep(1);
+      setForm({ name: '', company: '', email: '', details: '', file: null });
+      setBank('');
+      setPlan('');
+      setReceipt(null);
+    } catch (error: any) {
+      toast.dismiss(loadingToast);
+      console.error('Submission error:', error);
+      toast.error('Erro ao enviar pedido: ' + (error.message || 'Erro desconhecido'));
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
