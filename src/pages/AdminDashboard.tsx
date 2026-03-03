@@ -1,12 +1,13 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle } from 'lucide-react';
+import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { performOCR, quickOCR } from '@/lib/ocrService';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
@@ -115,6 +116,7 @@ const AdminDashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [adSearchQuery, setAdSearchQuery] = useState('');
   const [submissions, setSubmissions] = useState<any[]>([]);
+  const [processingOCR, setProcessingOCR] = useState<Record<string, boolean>>({});
   const [mobileMenu, setMobileMenu] = useState(false);
   const [ads, setAds] = useState<any[]>([]);
   const [taskCount, setTaskCount] = useState(4);
@@ -299,11 +301,77 @@ const AdminDashboard = () => {
     }
   };
 
+  // Run OCR on video task submissions automatically
+  const processOCRForSubmissions = useCallback(async (subs: any[]) => {
+    const videoSubs = subs.filter(sub => sub.unique_comment_code && sub.screenshot_url);
+    
+    for (const sub of videoSubs) {
+      if (processingOCR[sub.id]) continue;
+      
+      setProcessingOCR(prev => ({ ...prev, [sub.id]: true }));
+      
+      try {
+        const ocrResult = await quickOCR(sub.screenshot_url);
+        
+        let fraudAlert: 'confiavel' | 'suspeita' | null = null;
+        let riskScore = 0;
+        
+        // Check if code matches
+        if (ocrResult.foundCodes && ocrResult.foundCodes.length > 0) {
+          const codeMatch = ocrResult.foundCodes.some((code: string) => 
+            code.toUpperCase() === sub.unique_comment_code?.toUpperCase()
+          );
+          
+          if (codeMatch && ocrResult.confidence > 0.5) {
+            fraudAlert = 'confiavel';
+          } else {
+            fraudAlert = 'suspeita';
+            riskScore = 30;
+          }
+        } else {
+          fraudAlert = 'suspeita';
+          riskScore = 50;
+        }
+        
+        // Update submission with OCR results
+        await supabase.from('task_submissions').update({
+          ocr_extracted_code: ocrResult.foundCodes?.join(', ') || null,
+          ocr_confidence: ocrResult.confidence,
+          fraud_alert: fraudAlert,
+          risk_score: riskScore
+        }).eq('id', sub.id);
+        
+        // Update local state
+        setSubmissions(prev => prev.map(s => 
+          s.id === sub.id ? { 
+            ...s, 
+            ocr_extracted_code: ocrResult.foundCodes?.join(', ') || null,
+            ocr_confidence: ocrResult.confidence,
+            fraudAlert,
+            riskScore
+          } : s
+        ));
+        
+      } catch (error) {
+        console.error('OCR error for submission:', sub.id, error);
+      } finally {
+        setProcessingOCR(prev => ({ ...prev, [sub.id]: false }));
+      }
+    }
+  }, [processingOCR]);
+
   useEffect(() => {
     if (panel) {
       fetchData();
     }
   }, [panel, user]);
+
+  // Run OCR when submissions are loaded
+  useEffect(() => {
+    if (submissions.length > 0 && panel === 'tasks') {
+      processOCRForSubmissions(submissions);
+    }
+  }, [submissions, panel]);
 
   const approveTask = async (sub: any) => {
     try {
@@ -1571,6 +1639,29 @@ const AdminDashboard = () => {
                       {/* Fraud Detection Info - Only show for video tasks */}
                       {(sub.tasks?.task_type === 'video' || sub.unique_comment_code) && (
                         <div className="mt-2 p-2 bg-muted/50 rounded-lg">
+                          {/* OCR Processing Indicator */}
+                          {processingOCR[sub.id] && (
+                            <div className="flex items-center gap-2 text-blue-400 text-xs mb-2">
+                              <Loader2 size={12} className="animate-spin" />
+                              Analisando captura...
+                            </div>
+                          )}
+
+                          {/* Code comparison */}
+                          {sub.unique_comment_code && (
+                            <p className="text-xs text-muted-foreground mb-1">
+                              <span className="font-medium">Código esperado:</span> {sub.unique_comment_code}
+                            </p>
+                          )}
+                          {sub.ocr_extracted_code && (
+                            <p className="text-xs text-muted-foreground mb-1">
+                              <span className="font-medium">Código detectado:</span>{' '}
+                              <span className={sub.fraudAlert === 'confiavel' ? 'text-green-400 font-mono' : 'text-red-400 font-mono'}>
+                                {sub.ocr_extracted_code}
+                              </span>
+                            </p>
+                          )}
+
                           {/* Risk Score */}
                           {sub.risk_score > 0 && (
                             <div className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${sub.risk_score >= 70 ? 'bg-red-500/20 text-red-400' :
