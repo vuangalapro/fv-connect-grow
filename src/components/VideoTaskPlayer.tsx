@@ -284,6 +284,20 @@ export default function VideoTaskPlayer({
     }
   }, [isVideoCompletedInSession]);
 
+  // Prevent body scroll when modal is open
+  useEffect(() => {
+    const shouldBlock = (isOpen || showUpload) && isMobile;
+    if (shouldBlock) {
+      // Save original overflow style
+      const originalStyle = window.getComputedStyle(document.body).overflow;
+      document.body.style.overflow = 'hidden';
+      
+      return () => {
+        document.body.style.overflow = originalStyle;
+      };
+    }
+  }, [isOpen, showUpload, isMobile]);
+
   useEffect(() => {
     if (isOpen && taskId && userId) {
       const code = generateUniqueCommentCode(taskId, userId);
