@@ -301,6 +301,37 @@ const AffiliateDashboard = () => {
         const screenshotData = canvas.toDataURL('image/jpeg', 0.6);
 
         try {
+          // Check if user already submitted this task
+          const { data: existingSubmission } = await supabase
+            .from('task_submissions')
+            .select('id, status')
+            .eq('task_id', taskId)
+            .eq('user_id', user.id)
+            .single();
+
+          if (existingSubmission) {
+            if (existingSubmission.status === 'approved') {
+              toast.error('Já completaste esta tarefa!');
+            } else if (existingSubmission.status === 'pending') {
+              toast.error('Já enviaste esta tarefa! Aguarda validação.');
+            } else if (existingSubmission.status === 'rejected') {
+              // Allow resubmission - update instead of insert
+              const { error } = await supabase
+                .from('task_submissions')
+                .update({
+                  screenshot_url: screenshotData,
+                  status: 'pending',
+                  created_at: new Date().toISOString()
+                })
+                .eq('id', existingSubmission.id);
+
+              if (error) throw error;
+              toast.success('Tarefa reenviada! Aguardando validação.');
+              fetchData();
+            }
+            return;
+          }
+
           const { error } = await supabase.from('task_submissions').insert({
             task_id: taskId,
             user_id: user.id,
