@@ -621,13 +621,6 @@ const AffiliateDashboard = () => {
                         onTimeUpdate={(seconds) => {
                           console.log('Video watched:', seconds, 'seconds');
                         }}
-                        onReadyToSubmit={() => {
-                          console.log('Ready to submit for task:', task.id);
-                        }}
-                        onSubmitted={() => {
-                          // Switch to reviews panel after submission
-                          setPanel('reviews');
-                        }}
                         onSubmit={async (submissionData) => {
                           const { screenshotData, watchedTime, uniqueCommentCode, deviceFingerprint, startTime, watchSessionData, ocrResult } = submissionData;
 

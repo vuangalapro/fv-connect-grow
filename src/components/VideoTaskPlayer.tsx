@@ -475,7 +475,7 @@ export default function VideoTaskPlayer({
           await onSubmit(submissionData);
         }
 
-        // Close popup and switch to reviews panel
+        // Close popup after submission
         setShowUpload(false);
         setSelectedFile(null);
         setIsOpen(false);
@@ -484,14 +484,6 @@ export default function VideoTaskPlayer({
         setWatchedTime(0);
         setUniqueCode('');
         setIsVideoCompleted(false);
-
-        // Trigger switch to reviews panel silently
-        if (triggerSwitchToReviews) {
-          triggerSwitchToReviews();
-        }
-        if (onSubmitted) {
-          onSubmitted();
-        }
       };
       reader.readAsDataURL(selectedFile);
     } catch (error) {

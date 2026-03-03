@@ -123,7 +123,7 @@ const AdminDashboard = () => {
   const [taskRequiredTimes, setTaskRequiredTimes] = useState<number[]>(Array(4).fill(90));
   const [existingTasks, setExistingTasks] = useState<Array<{ id: string; title: string; url: string; expires_at?: string; task_type?: string; required_time?: number }>>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
-  const [previewFile, setPreviewFile] = useState<{ data: string; title: string } | null>(null);
+  const [previewFile, setPreviewFile] = useState<{ data: string; title: string; extractedCode?: string; fraudAlert?: string } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [userSubmissions, setUserSubmissions] = useState<any[]>([]);
@@ -1547,7 +1547,12 @@ const AdminDashboard = () => {
                           src={sub.screenshot_url}
                           alt="Captura"
                           className="w-32 h-24 object-cover rounded-lg border border-border cursor-pointer hover:opacity-80 transition-opacity"
-                          onClick={() => setPreviewFile({ data: sub.screenshot_url, title: `Captura de ${sub.profiles?.full_name || sub.profiles?.email}` })}
+                          onClick={() => setPreviewFile({ 
+                            data: sub.screenshot_url, 
+                            title: `Captura de ${sub.profiles?.full_name || sub.profiles?.email}`,
+                            extractedCode: sub.ocr_extracted_code || sub.unique_comment_code,
+                            fraudAlert: sub.fraud_alert
+                          })}
                         />
                         <button
                           onClick={() => window.open(sub.screenshot_url, '_blank')}
@@ -1986,14 +1991,28 @@ const AdminDashboard = () => {
 
       {/* File Preview Modal */}
       {previewFile && (
-        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center p-4">
+        <div className="fixed inset-0 z-[9999] bg-black/90 flex flex-col items-center justify-center p-4">
           <div className="w-full max-w-5xl flex flex-col h-[90vh] glass rounded-2xl overflow-hidden animate-in zoom-in-95">
             <div className="p-4 border-b border-border flex items-center justify-between bg-background/50">
-              <h3 className="font-bold text-foreground truncate max-w-[70%]">{previewFile.title}</h3>
+              <div className="flex items-center gap-4">
+                <h3 className="font-bold text-foreground truncate max-w-[70%]">{previewFile.title}</h3>
+                {previewFile.fraudAlert && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${previewFile.fraudAlert === 'suspeita' ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                    {previewFile.fraudAlert === 'suspeita' ? '🔴 SUSPEITA' : '🟢 CONFIÁVEL'}
+                  </span>
+                )}
+              </div>
               <Button variant="outline" size="sm" onClick={() => setPreviewFile(null)} className="gap-2">
                 <ArrowLeft size={16} /> Voltar
               </Button>
             </div>
+            {previewFile.extractedCode && (
+              <div className="px-4 py-2 bg-purple-500/10 border-b border-purple-500/30">
+                <p className="text-sm text-purple-300">
+                  <span className="font-semibold">Código encontrado:</span> {previewFile.extractedCode}
+                </p>
+              </div>
+            )}
             <div className="flex-1 bg-black/20 flex items-center justify-center overflow-auto p-4">
               {previewFile.data.startsWith('data:image/') ? (
                 <img src={previewFile.data} alt="Preview" className="max-w-full max-h-full object-contain shadow-2xl" />
