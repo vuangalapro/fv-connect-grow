@@ -651,7 +651,6 @@ const AffiliateDashboard = () => {
                                     device_fingerprint: deviceFingerprint,
                                     start_time: startTime.toISOString(),
                                     screenshot_uploaded: true,
-                                    watch_sessions: watchSessionData ? JSON.stringify(watchSessionData) : null,
                                     status: 'pending',
                                     created_at: new Date().toISOString()
                                   })
@@ -668,9 +667,8 @@ const AffiliateDashboard = () => {
                             let fraudAlert: 'confiavel' | 'suspeita' | null = null;
                             let riskScore = 0;
 
-                            // OCR is not processed on affiliate side - will be done by admin
-                            // Insert new submission
-                            const { error } = await supabase.from('task_submissions').insert({
+                            // Remove watch_sessions as column doesn't exist in database yet
+                            const submissionData: any = {
                               task_id: task.id,
                               user_id: user.id,
                               screenshot_url: screenshotData,
@@ -679,11 +677,12 @@ const AffiliateDashboard = () => {
                               device_fingerprint: deviceFingerprint,
                               start_time: startTime.toISOString(),
                               screenshot_uploaded: true,
-                              risk_score: riskScore,
-                              fraud_alert: fraudAlert,
-                              watch_sessions: watchSessionData ? JSON.stringify(watchSessionData) : null,
+                              risk_score: 0,
+                              fraud_alert: null,
                               status: 'pending',
-                            });
+                            };
+
+                            const { error } = await supabase.from('task_submissions').insert(submissionData);
 
                             if (error) throw error;
 
