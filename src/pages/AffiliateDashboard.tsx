@@ -691,7 +691,12 @@ const AffiliateDashboard = () => {
                             fetchData();
                           } catch (error) {
                             console.error('Submission error:', error);
-                            toast.error('Erro ao enviar a tarefa.');
+                            // Show more detailed error message
+                            if (error instanceof Error) {
+                              toast.error(`Erro: ${error.message}`);
+                            } else {
+                              toast.error('Erro ao enviar a tarefa. Tente novamente.');
+                            }
                           }
                         }}
                       />
