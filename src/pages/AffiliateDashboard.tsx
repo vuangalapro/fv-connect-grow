@@ -622,7 +622,7 @@ const AffiliateDashboard = () => {
                           console.log('Video watched:', seconds, 'seconds');
                         }}
                         onSubmit={async (submissionData) => {
-                          const { screenshotData, watchedTime, uniqueCommentCode, deviceFingerprint, startTime, watchSessionData, ocrResult } = submissionData;
+                          const { screenshotData, watchedTime, uniqueCommentCode, deviceFingerprint, startTime, watchSessionData } = submissionData;
 
                           try {
                             // Check if user already submitted this task
@@ -651,8 +651,6 @@ const AffiliateDashboard = () => {
                                     device_fingerprint: deviceFingerprint,
                                     start_time: startTime.toISOString(),
                                     screenshot_uploaded: true,
-                                    ocr_extracted_code: ocrResult?.foundCodes?.join(', '),
-                                    ocr_confidence: ocrResult?.confidence,
                                     watch_sessions: watchSessionData ? JSON.stringify(watchSessionData) : null,
                                     status: 'pending',
                                     created_at: new Date().toISOString()
@@ -670,17 +668,8 @@ const AffiliateDashboard = () => {
                             let fraudAlert: 'confiavel' | 'suspeita' | null = null;
                             let riskScore = 0;
 
-                            if (ocrResult) {
-                              // If OCR didn't find the code, it's suspicious
-                              if (!ocrResult.isMatch) {
-                                riskScore = 30;
-                                fraudAlert = 'suspeita';
-                              } else if (ocrResult.confidence > 0.7) {
-                                // High confidence OCR match = trustworthy
-                                fraudAlert = 'confiavel';
-                              }
-                            }
-
+                            // OCR is not processed on affiliate side - will be done by admin
+                            // Insert new submission
                             const { error } = await supabase.from('task_submissions').insert({
                               task_id: task.id,
                               user_id: user.id,
@@ -690,8 +679,6 @@ const AffiliateDashboard = () => {
                               device_fingerprint: deviceFingerprint,
                               start_time: startTime.toISOString(),
                               screenshot_uploaded: true,
-                              ocr_extracted_code: ocrResult?.foundCodes?.join(', '),
-                              ocr_confidence: ocrResult?.confidence,
                               risk_score: riskScore,
                               fraud_alert: fraudAlert,
                               watch_sessions: watchSessionData ? JSON.stringify(watchSessionData) : null,
