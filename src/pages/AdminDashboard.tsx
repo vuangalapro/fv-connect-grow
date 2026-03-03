@@ -2082,8 +2082,8 @@ const AdminDashboard = () => {
 
       {/* File Preview Modal */}
       {previewFile && (
-        <div className="fixed inset-0 z-[9999] bg-black/90 flex flex-col items-center justify-center p-4">
-          <div className="w-full max-w-5xl flex flex-col h-[90vh] glass rounded-2xl overflow-hidden animate-in zoom-in-95">
+        <div className="fixed inset-0 z-[99999] bg-black/90 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="w-full max-w-4xl mx-auto my-4 glass rounded-2xl overflow-hidden animate-in zoom-in-95 max-h-[90vh] flex flex-col">
             <div className="p-4 border-b border-border flex items-center justify-between bg-background/50">
               <div className="flex items-center gap-4">
                 <h3 className="font-bold text-foreground truncate max-w-[70%]">{previewFile.title}</h3>
