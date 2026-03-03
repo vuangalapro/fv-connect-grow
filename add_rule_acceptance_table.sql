@@ -2,9 +2,10 @@
 -- RULE ACCEPTANCE TABLE FOR AFFILIATES
 -- =====================================================
 -- Execute this SQL in Supabase SQL Editor
+-- Uses IF NOT EXISTS to avoid errors on re-run
 -- =====================================================
 
--- Table to track affiliate rule acceptance
+-- Table to track affiliate rule acceptance (if not exists)
 CREATE TABLE IF NOT EXISTS affiliate_rule_acceptance (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     affiliate_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
@@ -25,6 +26,11 @@ ON affiliate_rule_acceptance(accepted_at DESC);
 -- Enable RLS
 ALTER TABLE affiliate_rule_acceptance ENABLE ROW LEVEL SECURITY;
 
+-- Drop existing policies if they exist (to avoid duplicates)
+DROP POLICY IF EXISTS "Users can view own rule acceptance" ON affiliate_rule_acceptance;
+DROP POLICY IF EXISTS "Users can insert rule acceptance" ON affiliate_rule_acceptance;
+DROP POLICY IF EXISTS "Admins can view all rule acceptance" ON affiliate_rule_acceptance;
+
 -- Policy: Users can view their own acceptance records
 CREATE POLICY "Users can view own rule acceptance" 
 ON affiliate_rule_acceptance
@@ -42,8 +48,7 @@ FOR SELECT USING (
     EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true)
 );
 
--- Function to check if rules need to be re-accepted
--- Returns true if acceptance is needed (first login, >7 days, or new version)
+-- Function to check if rules need to be re-accepted (if not exists)
 CREATE OR REPLACE FUNCTION check_rules_acceptance_needed(p_affiliate_id UUID)
 RETURNS BOOLEAN AS $$
 DECLARE
@@ -108,7 +113,7 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- Verify table created
-SELECT 'Rule acceptance table created successfully!' as message;
+SELECT 'Rule acceptance table created/updated successfully!' as message;
 
 -- Show table
 SELECT table_name 
