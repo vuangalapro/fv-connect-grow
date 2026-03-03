@@ -21,7 +21,8 @@ export interface VideoSubmissionData {
     foundCodes: string[];
     confidence: number;
     isMatch: boolean;
-  };
+  } | null;
+  fraudAlert?: 'confiavel' | 'suspeita' | null;
 }
 
 interface VideoTaskPlayerProps {
@@ -243,8 +244,6 @@ export default function VideoTaskPlayer({
   const [showUpload, setShowUpload] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
-  const [isProcessingOCR, setIsProcessingOCR] = useState(false);
-  const [ocrProgress, setOcrProgress] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
 
   // Video task context for single popup lock
@@ -406,49 +405,11 @@ export default function VideoTaskPlayer({
     if (!selectedFile || !canSubmit || !uniqueCode || !deviceFingerprint) return;
 
     setIsUploading(true);
-    setIsProcessingOCR(true);
-    setOcrProgress(0);
 
     try {
       const reader = new FileReader();
       reader.onload = async (e) => {
         const screenshotData = e.target?.result as string;
-
-        let ocrResult;
-        try {
-          const progressInterval = setInterval(() => {
-            setOcrProgress(prev => Math.min(prev + 10, 90));
-          }, 200);
-
-          const ocr = await performOCR(screenshotData, uniqueCode);
-
-          clearInterval(progressInterval);
-          setOcrProgress(100);
-
-          const validation = validateOCRMatch(ocr, uniqueCode);
-
-          ocrResult = {
-            extractedText: ocr.extractedText,
-            foundCodes: ocr.foundCodes,
-            confidence: ocr.confidence,
-            isMatch: validation.isMatch,
-          };
-
-          if (!validation.isMatch) {
-            console.log('OCR: Code not found in screenshot - will be reviewed by admin');
-          }
-        } catch (ocrError) {
-          console.error('OCR Error:', ocrError);
-          // Silent failure - admin will review manually
-          ocrResult = {
-            extractedText: '',
-            foundCodes: [],
-            confidence: 0,
-            isMatch: false,
-          };
-        }
-
-        setIsProcessingOCR(false);
 
         // Calculate watch session metrics
         const sessionData = watchSessionRef.current;
@@ -468,7 +429,8 @@ export default function VideoTaskPlayer({
             totalPauses,
             maxContinuousWatch,
           },
-          ocrResult,
+         ocrResult: null,
+         fraudAlert: null,
         };
 
         if (onSubmit) {
@@ -489,7 +451,6 @@ export default function VideoTaskPlayer({
     } catch (error) {
       console.error('Upload error:', error);
       toast.error('Erro ao enviar prova');
-      setIsProcessingOCR(false);
     } finally {
       setIsUploading(false);
     }
@@ -689,24 +650,6 @@ export default function VideoTaskPlayer({
               </button>
             </div>
 
-            {isProcessingOCR && (
-              <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                <div className="flex items-center gap-2 mb-2">
-                  <Loader2 size={16} className="animate-spin text-blue-400" />
-                  <span className="text-sm text-blue-300">Validando código...</span>
-                </div>
-                <div className="w-full bg-blue-900/30 rounded-full h-2">
-                  <div
-                    className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${ocrProgress}%` }}
-                  />
-                </div>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Aguarde, verificando o código na imagem
-                </p>
-              </div>
-            )}
-
             <img
               src={URL.createObjectURL(selectedFile)}
               alt="Captura"
@@ -728,16 +671,15 @@ export default function VideoTaskPlayer({
                   setShowUpload(false);
                   setSelectedFile(null);
                 }}
-                disabled={isProcessingOCR}
               >
                 Cancelar
               </Button>
               <Button
                 className="flex-1 bg-green-600 hover:bg-green-700"
                 onClick={handleSubmit}
-                disabled={isUploading || isProcessingOCR}
+                disabled={isUploading}
               >
-                {isUploading ? 'Enviando...' : isProcessingOCR ? 'Processando...' : '✅ Confirmar'}
+                {isUploading ? 'Enviando...' : '✅ Confirmar'}
               </Button>
             </div>
           </div>
