@@ -679,7 +679,7 @@ export default function VideoTaskPlayer({
                 onClick={handleSubmit}
                 disabled={isUploading}
               >
-                {isUploading ? 'Enviando...' : '✅ Confirmar'}
+                {isUploading ? 'Enviando...' : '✅ Confirmar'} {/* Instant submission - no OCR */}
               </Button>
             </div>
           </div>
