@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, ExternalLink, Upload, Check, X, AlertTriangle, Loader2, Smartphone, Lock } from 'lucide-react';
 import { toast } from 'sonner';
-import { generateUniqueCommentCode, generateDeviceFingerprint, formatTime } from '@/lib/fraudPrevention';
+import { generateDeviceFingerprint, formatTime } from '@/lib/fraudPrevention';
 import { performOCR, validateOCRMatch } from '@/lib/ocrService';
 import { useVideoTask } from '@/contexts/VideoTaskContext';
 
@@ -223,9 +223,6 @@ const extractVideoId = (url: string): string | null => {
 // Local storage key for completed videos
 const getCompletedVideosKey = (userId: string) => `completed_videos_${userId}`;
 
-// Local storage key for unique codes per task
-const getUniqueCodeKey = (userId: string, taskId: string) => `video_code_${userId}_${taskId}`;
-
 // Local storage key for watch time
 const getWatchTimeKey = (userId: string, taskId: string) => `video_time_${userId}_${taskId}`;
 
@@ -252,7 +249,6 @@ export default function VideoTaskPlayer({
   const isThisTaskOpen = activeVideoTaskId === taskId;
   const isOtherTaskOpen = isAnyVideoTaskOpen && !isThisTaskOpen;
 
-  const [uniqueCode, setUniqueCode] = useState<string>('');
   const [deviceFingerprint, setDeviceFingerprint] = useState<string>('');
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [isVideoCompleted, setIsVideoCompleted] = useState(false);
@@ -284,12 +280,6 @@ export default function VideoTaskPlayer({
       parsed[taskId] = true;
       localStorage.setItem(getCompletedVideosKey(userId), JSON.stringify(parsed));
       
-      // Save unique code (only if not already saved)
-      if (!localStorage.getItem(getUniqueCodeKey(userId, taskId))) {
-        const code = generateUniqueCommentCode(taskId, userId);
-        localStorage.setItem(getUniqueCodeKey(userId, taskId), code);
-      }
-      
       // Save watch time
       localStorage.setItem(getWatchTimeKey(userId, taskId), String(watchedTime));
     } catch (e) {
@@ -317,21 +307,15 @@ export default function VideoTaskPlayer({
 
   useEffect(() => {
     if (isOpen && taskId && userId) {
-      // Check if there's a saved unique code for this task
-      const savedCode = localStorage.getItem(getUniqueCodeKey(userId, taskId));
+      // Check if there's a saved time for this task
       const savedTime = localStorage.getItem(getWatchTimeKey(userId, taskId));
       
-      // If video was already completed, use saved code and time
-      if (savedCode && savedTime) {
-        setUniqueCode(savedCode);
+      // If video was already completed, use saved time
+      if (savedTime) {
         setWatchedTime(parseInt(savedTime, 10));
         setCanSubmit(true);
         setIsVideoCompleted(true);
       } else {
-        // Generate new code only if not already completed
-        const code = generateUniqueCommentCode(taskId, userId);
-        setUniqueCode(code);
-        localStorage.setItem(getUniqueCodeKey(userId, taskId), code);
         setWatchedTime(0);
         setCanSubmit(false);
         setIsVideoCompleted(false);
@@ -385,10 +369,6 @@ export default function VideoTaskPlayer({
     }
   }, [canSubmit, markVideoCompleted]);
 
-  const copyCodeToClipboard = () => {
-    navigator.clipboard.writeText(uniqueCode);
-    toast.success('Código copiado!');
-  };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -403,7 +383,7 @@ export default function VideoTaskPlayer({
   };
 
   const handleSubmit = async () => {
-    if (!selectedFile || !canSubmit || !uniqueCode || !deviceFingerprint) return;
+    if (!selectedFile || !canSubmit || !deviceFingerprint) return;
 
     setIsUploading(true);
 
@@ -423,7 +403,7 @@ export default function VideoTaskPlayer({
         const submissionData: VideoSubmissionData = {
           screenshotData,
           watchedTime,
-          uniqueCommentCode: uniqueCode,
+          uniqueCommentCode: '',
           deviceFingerprint,
           startTime: startTime || new Date(),
           watchSessionData: {
@@ -445,7 +425,6 @@ export default function VideoTaskPlayer({
         closeVideoTask();
         setCanSubmit(false);
         setWatchedTime(0);
-        setUniqueCode('');
         setIsVideoCompleted(false);
       };
       reader.readAsDataURL(selectedFile);
@@ -530,7 +509,7 @@ export default function VideoTaskPlayer({
             />
 
             {/* Instructions - Show after video is completed */}
-            {isVideoCompleted && uniqueCode && (
+            {isVideoCompleted && (
               <div className="mt-4 space-y-4">
                 {/* Instructions */}
                 <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
@@ -615,16 +594,7 @@ export default function VideoTaskPlayer({
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
           <div className="glass rounded-2xl p-4 sm:p-6 w-full max-w-sm mx-auto my-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold">Confirmar Envio</h3>
-              <button
-                onClick={() => {
-                  setShowUpload(false);
-                  setSelectedFile(null);
-                }}
-                className="text-muted-foreground hover:text-foreground"
-              >
-                <X size={24} />
-              </button>
+              <h3 className="text-lg font-bold">Enviando...</h3>
             </div>
 
             <img
@@ -633,31 +603,8 @@ export default function VideoTaskPlayer({
               className="w-full rounded-lg mb-4 max-h-64 object-contain bg-black"
             />
 
-            {uniqueCode && (
-              <div className="mb-4 p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
-                <p className="text-xs text-purple-300">Código esperado na imagem:</p>
-                <p className="font-mono text-sm text-white">{uniqueCode}</p>
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <Button
-                variant="outline"
-                className="flex-1"
-                onClick={() => {
-                  setShowUpload(false);
-                  setSelectedFile(null);
-                }}
-              >
-                Cancelar
-              </Button>
-              <Button
-                className="flex-1 bg-green-600 hover:bg-green-700"
-                onClick={handleSubmit}
-                disabled={isUploading}
-              >
-                {isUploading ? 'Enviando...' : '✅ Confirmar'} {/* Instant submission - no OCR */}
-              </Button>
+            <div className="flex justify-center">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             </div>
           </div>
         </div>,
