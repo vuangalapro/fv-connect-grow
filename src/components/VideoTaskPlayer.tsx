@@ -471,11 +471,11 @@ export default function VideoTaskPlayer({
 
       {isOpen && (
         <div
-          className={`fixed inset-0 z-50 flex items-start justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm ${isMobile ? 'overflow-y-auto' : ''}`}
+          className="fixed inset-0 z-[100] flex items-start justify-center p-0 sm:p-4 bg-black/90 backdrop-blur-sm overflow-hidden"
           style={isMobile ? { height: '100vh', width: '100vw' } : {}}
         >
           <div
-            className={`glass rounded-none sm:rounded-2xl p-3 sm:p-6 w-full ${isMobile ? 'h-screen min-h-screen' : 'max-w-3xl max-h-[90vh] overflow-auto'}`}
+            className={`glass rounded-none sm:rounded-2xl p-3 sm:p-6 w-full ${isMobile ? 'h-screen min-h-screen overflow-y-auto' : 'max-w-3xl max-h-[90vh] overflow-auto'}`}
             style={isMobile ? { height: '100%', display: 'flex', flexDirection: 'column' } : {}}
           >
             {/* Header */}
@@ -576,8 +576,8 @@ export default function VideoTaskPlayer({
 
                   <div className="flex-1">
                     <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium ${canSubmit
-                        ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30'
-                        : 'bg-muted text-muted-foreground cursor-not-allowed border border-muted'
+                      ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30'
+                      : 'bg-muted text-muted-foreground cursor-not-allowed border border-muted'
                       }`}>
                       <input
                         type="file"
@@ -618,11 +618,11 @@ export default function VideoTaskPlayer({
       {/* Upload confirmation modal */}
       {showUpload && selectedFile && (
         <div
-          className={`fixed inset-0 z-[60] flex items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm ${isMobile ? 'overflow-y-auto' : ''}`}
+          className="fixed inset-0 z-[110] flex items-center justify-center p-0 sm:p-4 bg-black/80 backdrop-blur-sm overflow-hidden"
           style={isMobile ? { height: '100vh', width: '100vw' } : {}}
         >
           <div
-            className={`glass rounded-none sm:rounded-2xl p-4 sm:p-6 w-full ${isMobile ? 'h-screen min-h-screen' : 'max-w-md'}`}
+            className={`glass rounded-none sm:rounded-2xl p-4 sm:p-6 w-full ${isMobile ? 'h-screen min-h-screen overflow-y-auto' : 'max-w-md'}`}
             style={isMobile ? { height: '100%', display: 'flex', flexDirection: 'column' } : {}}
           >
             <div className="flex items-center justify-between mb-4">
