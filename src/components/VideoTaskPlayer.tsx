@@ -497,8 +497,8 @@ export default function VideoTaskPlayer({
       </Button>
 
       {isOpen && (
-        <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm ${isMobile ? 'overflow-y-auto' : ''}`}>
-          <div className={`glass rounded-2xl p-4 sm:p-6 w-full ${isMobile ? 'h-screen min-h-screen w-screen max-w-none' : 'max-w-3xl max-h-[90vh] overflow-auto'}`}>
+        <div className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm overflow-auto`}>
+          <div className={`glass rounded-2xl p-4 sm:p-6 w-full max-w-3xl my-auto`}>
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -642,8 +642,8 @@ export default function VideoTaskPlayer({
 
       {/* Upload confirmation modal */}
       {showUpload && selectedFile && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm">
-          <div className={`glass rounded-2xl p-4 sm:p-6 w-full ${isMobile ? 'h-screen min-h-screen w-screen max-w-none' : 'max-w-md'}`}>
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm overflow-auto">
+          <div className={`glass rounded-2xl p-4 sm:p-6 w-full max-w-md my-auto`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold">Confirmar Envio</h3>
               <button
