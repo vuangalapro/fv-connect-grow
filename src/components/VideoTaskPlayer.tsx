@@ -498,7 +498,7 @@ export default function VideoTaskPlayer({
       </Button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm overflow-y-auto">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
           <div className="glass rounded-2xl p-4 sm:p-6 w-full max-w-2xl lg:max-w-xl mx-auto my-4 max-h-[90vh] overflow-y-auto">
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
@@ -635,7 +635,7 @@ export default function VideoTaskPlayer({
 
       {/* Upload confirmation modal */}
       {showUpload && selectedFile && (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm overflow-y-auto">
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
           <div className="glass rounded-2xl p-4 sm:p-6 w-full max-w-sm mx-auto my-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold">Confirmar Envio</h3>
