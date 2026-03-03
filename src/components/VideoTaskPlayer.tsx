@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, ExternalLink, Upload, Check, X, Copy, AlertTriangle, Loader2, Smartphone, Monitor, Lock } from 'lucide-react';
 import { toast } from 'sonner';
@@ -497,7 +498,7 @@ export default function VideoTaskPlayer({
         )}
       </Button>
 
-      {isOpen && (
+      {isOpen && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
           <div className="glass rounded-2xl p-4 sm:p-6 w-full max-w-2xl lg:max-w-xl mx-auto my-4 max-h-[90vh] overflow-y-auto">
             {/* Header */}
@@ -630,11 +631,12 @@ export default function VideoTaskPlayer({
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Upload confirmation modal */}
-      {showUpload && selectedFile && (
+      {showUpload && selectedFile && createPortal(
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
           <div className="glass rounded-2xl p-4 sm:p-6 w-full max-w-sm mx-auto my-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
@@ -683,7 +685,8 @@ export default function VideoTaskPlayer({
               </Button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

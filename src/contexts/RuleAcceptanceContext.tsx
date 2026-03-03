@@ -19,6 +19,9 @@ export function RuleAcceptanceProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null);
   const { user } = useAuth();
 
+  // Check if user is admin
+  const isAdmin = user?.is_admin === true;
+
   // Check if rules need to be accepted
   const checkRulesAcceptance = async (pUserId: string): Promise<boolean> => {
     try {
@@ -109,6 +112,14 @@ export function RuleAcceptanceProvider({ children }: { children: ReactNode }) {
     const init = async () => {
       if (user) {
         setUserId(user.id);
+        
+        // Skip rule acceptance check for admins
+        if (isAdmin) {
+          setShowRulesModal(false);
+          setAccepted(true);
+          return;
+        }
+        
         const needsAcceptance = await checkRulesAcceptance(user.id);
         setShowRulesModal(needsAcceptance);
         setAccepted(!needsAcceptance);
@@ -121,7 +132,8 @@ export function RuleAcceptanceProvider({ children }: { children: ReactNode }) {
   // Re-check on dashboard/page access
   useEffect(() => {
     const recheckOnDashboard = async () => {
-      if (user && accepted) {
+      // Don't recheck for admins
+      if (user && accepted && !isAdmin) {
         // Recheck if rules need to be accepted (in case of 7-day expiry)
         const needsAcceptance = await checkRulesAcceptance(user.id);
         if (needsAcceptance) {
@@ -133,7 +145,7 @@ export function RuleAcceptanceProvider({ children }: { children: ReactNode }) {
 
     // Check on page visibility change (when user returns to dashboard)
     const handleVisibilityChange = () => {
-      if (!document.hidden && user) {
+      if (!document.hidden && user && !isAdmin) {
         recheckOnDashboard();
       }
     };
@@ -142,7 +154,7 @@ export function RuleAcceptanceProvider({ children }: { children: ReactNode }) {
     
     // Check periodically (every 30 seconds when on dashboard)
     const interval = setInterval(() => {
-      if (user && accepted) {
+      if (user && accepted && !isAdmin) {
         recheckOnDashboard();
       }
     }, 30000);
