@@ -8,18 +8,19 @@ WHERE table_name = 'task_submissions';
 
 -- Step 2: Find and delete duplicate submissions (keep only the oldest approved one, or oldest pending)
 -- This query identifies duplicates
-SELECT user_id, task_id, COUNT(*), MIN(id) as oldest_id
+SELECT user_id, task_id, COUNT(*)
 FROM public.task_submissions
 GROUP BY user_id, task_id
 HAVING COUNT(*) > 1;
 
 -- Step 3: Delete duplicates - keep only the first submission per user/task
--- Keep the oldest record (with smallest id)
+-- Keep the oldest record (with smallest id) using a different approach
 DELETE FROM public.task_submissions
 WHERE id NOT IN (
-  SELECT MIN(id)
-  FROM public.task_submissions
-  GROUP BY user_id, task_id
+  SELECT id FROM (
+    SELECT id, ROW_NUMBER() OVER (PARTITION BY user_id, task_id ORDER BY created_at ASC, id ASC) as rn
+    FROM public.task_submissions
+  ) sub WHERE rn = 1
 );
 
 -- Step 4: Add unique constraint to prevent future duplicates
