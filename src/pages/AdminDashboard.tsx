@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText } from 'lucide-react';
+import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -113,7 +113,9 @@ const AdminDashboard = () => {
   const [selectedUser, setSelectedUser] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [adSearchQuery, setAdSearchQuery] = useState('');
   const [submissions, setSubmissions] = useState<any[]>([]);
+  const [mobileMenu, setMobileMenu] = useState(false);
   const [ads, setAds] = useState<any[]>([]);
   const [taskCount, setTaskCount] = useState(4);
   const [taskLinks, setTaskLinks] = useState<string[]>(Array(4).fill(''));
@@ -774,6 +776,16 @@ const AdminDashboard = () => {
     );
   });
 
+  const filteredAds = ads.filter(ad => {
+    if (!adSearchQuery) return true;
+    const q = adSearchQuery.toLowerCase();
+    return (
+      (ad.name || '').toLowerCase().includes(q) ||
+      (ad.email || '').toLowerCase().includes(q) ||
+      (ad.company || '').toLowerCase().includes(q)
+    );
+  });
+
   const menuItems = [
     { id: null as Panel, label: 'Início', icon: Home },
     { id: 'users' as Panel, label: 'Ver Utilizadores', icon: Users },
@@ -799,11 +811,25 @@ const AdminDashboard = () => {
             </div>
           </button>
         </div>
-        <div className="flex md:flex-col gap-1 w-full overflow-x-auto md:overflow-visible">
+
+        {/* Mobile Header */}
+        <div className="md:hidden flex items-center justify-between w-full mb-4">
+          <h2 className="text-sm font-bold text-gradient-accent font-display">Painel Admin</h2>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setMobileMenu(!mobileMenu)} className="text-muted-foreground p-1">
+              <Menu size={20} />
+            </button>
+            <button onClick={handleLogout} className="text-destructive p-1">
+              <LogOut size={18} />
+            </button>
+          </div>
+        </div>
+
+        <div className={`${mobileMenu ? 'flex' : 'hidden'} md:flex flex-col gap-1 w-full fixed md:relative inset-0 md:inset-auto z-40 bg-background/95 md:bg-transparent backdrop-blur-sm md:backdrop-blur-none pt-16 md:pt-0 px-4 md:px-0 pb-4`}>
           {menuItems.map(item => (
             <button
               key={item.id}
-              onClick={() => { setPanel(item.id); setSelectedUser(null); }}
+              onClick={() => { setPanel(item.id); setSelectedUser(null); setMobileMenu(false); }}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all whitespace-nowrap ${panel === item.id ? 'bg-accent/20 text-accent' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
                 }`}
             >
@@ -823,15 +849,16 @@ const AdminDashboard = () => {
               )}
             </button>
           ))}
-        </div>
-        <div className="hidden md:block mt-auto">
-          <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-destructive hover:bg-destructive/10 transition-colors w-full">
+          <div className="hidden md:block mt-auto">
+            <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-destructive hover:bg-destructive/10 transition-colors w-full">
+              <LogOut size={18} /> Sair
+            </button>
+          </div>
+          {/* Mobile Logout - inside menu */}
+          <button onClick={handleLogout} className="md:hidden flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-destructive hover:bg-destructive/10 transition-colors w-full mt-auto">
             <LogOut size={18} /> Sair
           </button>
         </div>
-        <button onClick={handleLogout} className="md:hidden text-destructive p-1 ml-auto">
-          <LogOut size={18} />
-        </button>
       </div>
 
       <div className="flex-1 p-4 md:p-8 overflow-auto">
@@ -1543,9 +1570,18 @@ const AdminDashboard = () => {
             <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
               <ArrowLeft size={16} /> Voltar
             </button>
-            <h2 className="text-2xl font-bold mb-6 font-display">Publicidades Recebidas ({ads.length})</h2>
+            <h2 className="text-2xl font-bold mb-4 font-display">Publicidades Recebidas ({filteredAds.length})</h2>
+            <div className="mb-6">
+              <Input
+                type="text"
+                placeholder="Pesquisar por nome ou email..."
+                value={adSearchQuery}
+                onChange={(e) => setAdSearchQuery(e.target.value)}
+                className="max-w-md"
+              />
+            </div>
             <div className="space-y-4">
-              {ads.map(ad => (
+              {filteredAds.map(ad => (
                 <div key={ad.id} className="glass rounded-2xl p-6">
                   <div className="grid gap-2 text-sm">
                     {[
@@ -1587,7 +1623,11 @@ const AdminDashboard = () => {
                   </div>
                 </div>
               ))}
-              {ads.length === 0 && !isLoading && <p className="text-muted-foreground">Nenhuma publicidade recebida</p>}
+              {filteredAds.length === 0 && !isLoading && (
+                <p className="text-muted-foreground">
+                  {adSearchQuery ? 'Nenhuma publicidade encontrada' : 'Nenhuma publicidade recebida'}
+                </p>
+              )}
             </div>
           </div>
         )}

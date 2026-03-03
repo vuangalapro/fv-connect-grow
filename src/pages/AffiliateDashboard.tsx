@@ -460,7 +460,7 @@ const AffiliateDashboard = () => {
           </div>
         </div>
 
-        <div className={`${mobileMenu ? 'flex' : 'hidden'} md:flex flex-col gap-1 w-full`}>
+        <div className={`${mobileMenu ? 'flex' : 'hidden'} md:flex flex-col gap-1 w-full fixed md:relative inset-0 md:inset-auto z-40 bg-background/95 md:bg-transparent backdrop-blur-sm md:backdrop-blur-none pt-16 md:pt-0 px-4 md:px-0 pb-4 md:pb-0`}>
           {menuItems.map(item => (
             <button
               key={item.id}
