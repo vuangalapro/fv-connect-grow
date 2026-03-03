@@ -861,7 +861,7 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      <div className="flex-1 p-4 md:p-8 overflow-auto">
+      <div className="flex-1 p-4 md:p-8 overflow-auto md:pt-4 pt-16">
         {!panel && (
           <div className="space-y-6">
             {/* Stats Summary - Modern List */}

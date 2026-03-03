@@ -441,26 +441,22 @@ const AffiliateDashboard = () => {
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row">
-      {/* Sidebar */}
-      <div className="glass md:w-64 md:h-screen md:sticky md:top-0 p-4 flex md:flex-col gap-2 shrink-0">
-        <div className="hidden md:block mb-6">
+      {/* Mobile Menu Overlay */}
+      {mobileMenu && (
+        <div 
+          className="fixed inset-0 z-30 bg-background/80 backdrop-blur-sm md:hidden"
+          onClick={() => setMobileMenu(false)}
+        />
+      )}
+      
+      {/* Sidebar - Desktop only */}
+      <div className="hidden md:flex glass md:w-64 md:h-screen md:sticky md:top-0 p-4 flex-col gap-2 shrink-0">
+        <div className="mb-6">
           <h2 className="text-lg font-bold text-gradient-primary font-display">Fv-Comércio</h2>
           <p className="text-xs text-muted-foreground truncate">Bem-Vindo {profile.fullName || 'Afiliado'}</p>
         </div>
 
-        <div className="md:hidden flex items-center justify-between w-full">
-          <h2 className="text-sm font-bold text-gradient-primary font-display">Fv-Comércio</h2>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setMobileMenu(!mobileMenu)} className="text-muted-foreground p-1">
-              <Menu size={20} />
-            </button>
-            <button onClick={handleLogout} className="text-destructive p-1">
-              <LogOut size={18} />
-            </button>
-          </div>
-        </div>
-
-        <div className={`${mobileMenu ? 'flex' : 'hidden'} md:flex flex-col gap-1 w-full fixed md:relative inset-0 md:inset-auto z-40 bg-background/95 md:bg-transparent backdrop-blur-sm md:backdrop-blur-none pt-16 md:pt-0 px-4 md:px-0 pb-4 md:pb-0`}>
+        <div className="flex flex-col gap-1 w-full">
           {menuItems.map(item => (
             <button
               key={item.id}
@@ -477,15 +473,46 @@ const AffiliateDashboard = () => {
           ))}
         </div>
 
-        <div className="hidden md:block mt-auto">
+        <div className="mt-auto">
           <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-destructive hover:bg-destructive/10 transition-colors w-full">
             <LogOut size={18} /> Sair
           </button>
         </div>
       </div>
 
+      {/* Mobile Header */}
+      <div className="md:hidden fixed top-0 left-0 right-0 z-20 glass flex items-center justify-between px-4 py-3">
+        <h2 className="text-sm font-bold text-gradient-primary font-display">Fv-Comércio</h2>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setMobileMenu(!mobileMenu)} className="text-muted-foreground p-1">
+            {mobileMenu ? <X size={24} /> : <Menu size={24} />}
+          </button>
+          <button onClick={handleLogout} className="text-destructive p-1">
+            <LogOut size={18} />
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Menu - Slides from top */}
+      <div className={`${mobileMenu ? 'flex' : 'hidden'} md:hidden flex-col gap-1 w-full fixed inset-x-0 z-40 top-12 bg-background/95 backdrop-blur-sm px-4 py-4 shadow-lg`}>
+        {menuItems.map(item => (
+          <button
+            key={item.id}
+            onClick={() => { setPanel(item.id); setMobileMenu(false); }}
+            className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all ${panel === item.id ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
+              }`}
+          >
+            <item.icon size={20} />
+            {item.label}
+            {item.id === 'support' && unreadRepliesCount > 0 && (
+              <span className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-auto">{unreadRepliesCount}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
       {/* Main Content */}
-      <div className="flex-1 p-4 md:p-8 overflow-auto relative">
+      <div className="flex-1 p-4 md:p-8 overflow-auto relative md:pt-4 pt-16">
         {isLoadingData && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-sm rounded-xl">
             <div className="text-center">
