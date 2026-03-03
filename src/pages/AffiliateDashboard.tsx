@@ -472,7 +472,7 @@ const AffiliateDashboard = () => {
   const availableTasks = tasks.filter(t => !completedTasks.includes(t.id) && !pendingTasks.includes(t.id) && !rejectedTasks.includes(t.id));
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row">
+    <div className="min-h-screen flex flex-col md:flex-row !overflow-visible">
       {/* Mobile Menu Overlay */}
       {mobileMenu && (
         <div
@@ -544,7 +544,7 @@ const AffiliateDashboard = () => {
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 p-4 md:p-8 overflow-auto relative md:pt-4 pt-16">
+      <div className="flex-1 p-4 md:p-8 !overflow-visible relative md:pt-4 pt-16">
         {isLoadingData && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-sm rounded-xl">
             <div className="text-center">
@@ -586,7 +586,7 @@ const AffiliateDashboard = () => {
 
         {/* TASKS */}
         {panel === 'tasks' && (
-          <div>
+          <div className="overflow-visible">
             <button onClick={() => setPanel('home')} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
               <ArrowLeft size={16} /> Voltar
             </button>
@@ -599,7 +599,7 @@ const AffiliateDashboard = () => {
                 const isVideoTask = task.task_type === 'video';
 
                 return (
-                  <div key={task.id} className="glass rounded-xl p-3">
+                  <div key={task.id} className="glass rounded-xl p-3 overflow-visible">
                     {isVideoTask ? (
                       // Video Task with YouTube player
                       <VideoTaskPlayer

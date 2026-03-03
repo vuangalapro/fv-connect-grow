@@ -111,7 +111,7 @@ const YouTubePlayer = ({
         }
       }
     };
-    
+
     const interval = setInterval(handleSeek, 500);
     return () => clearInterval(interval);
   }, [currentTime]);
@@ -147,7 +147,7 @@ const YouTubePlayer = ({
     <div className="space-y-3">
       <div className="aspect-video rounded-lg overflow-hidden bg-black relative">
         <div id="youtube-player" className="w-full h-full" />
-        
+
         {/* Mobile warning overlay */}
         {isMobile && (
           <div className="absolute top-2 right-2 bg-black/60 px-2 py-1 rounded text-xs flex items-center gap-1 text-white">
@@ -497,7 +497,7 @@ export default function VideoTaskPlayer({
       </Button>
 
       {isOpen && (
-        <div className={`fixed inset-0 z-[9999] flex flex-col items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm overflow-auto`}>
+        <div className={`fixed inset-0 z-[99999] flex flex-col items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm overflow-auto pointer-events-auto h-screen w-screen`}>
           <div className={`glass rounded-2xl p-4 sm:p-6 w-full max-w-3xl my-auto`}>
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
@@ -599,11 +599,10 @@ export default function VideoTaskPlayer({
                   </Button>
 
                   <div className="flex-1">
-                    <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium ${
-                      canSubmit
+                    <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium ${canSubmit
                         ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30'
                         : 'bg-muted text-muted-foreground cursor-not-allowed border border-muted'
-                    }`}>
+                      }`}>
                       <input
                         type="file"
                         accept="image/jpeg,image/png"
@@ -642,7 +641,7 @@ export default function VideoTaskPlayer({
 
       {/* Upload confirmation modal */}
       {showUpload && selectedFile && (
-        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm overflow-auto">
+        <div className="fixed inset-0 z-[99999] flex flex-col items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm overflow-auto pointer-events-auto h-screen w-screen">
           <div className={`glass rounded-2xl p-4 sm:p-6 w-full max-w-md my-auto`}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold">Confirmar Envio</h3>
