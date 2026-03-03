@@ -163,7 +163,8 @@ BEGIN
     END IF;
 
     -- Calculate score
-    SELECT * INTO (v_score, v_flags, v_ip_shared, v_device_shared, v_shared_users, v_shared_devices)
+    SELECT score, flags, ip_shared, device_shared, shared_users, shared_devices
+    INTO v_score, v_flags, v_ip_shared, v_device_shared, v_shared_users, v_shared_devices
     FROM calculate_antifraud_score(
         v_submission.user_id,
         v_submission.client_ip,
