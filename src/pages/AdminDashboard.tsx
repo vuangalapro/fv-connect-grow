@@ -304,24 +304,24 @@ const AdminDashboard = () => {
   // Run OCR on video task submissions automatically
   const processOCRForSubmissions = useCallback(async (subs: any[]) => {
     const videoSubs = subs.filter(sub => sub.unique_comment_code && sub.screenshot_url);
-    
+
     for (const sub of videoSubs) {
       if (processingOCR[sub.id]) continue;
-      
+
       setProcessingOCR(prev => ({ ...prev, [sub.id]: true }));
-      
+
       try {
         const ocrResult = await quickOCR(sub.screenshot_url);
-        
+
         let fraudAlert: 'confiavel' | 'suspeita' | null = null;
         let riskScore = 0;
-        
+
         // Check if code matches
         if (ocrResult.foundCodes && ocrResult.foundCodes.length > 0) {
-          const codeMatch = ocrResult.foundCodes.some((code: string) => 
+          const codeMatch = ocrResult.foundCodes.some((code: string) =>
             code.toUpperCase() === sub.unique_comment_code?.toUpperCase()
           );
-          
+
           if (codeMatch && ocrResult.confidence > 0.5) {
             fraudAlert = 'confiavel';
           } else {
@@ -332,7 +332,7 @@ const AdminDashboard = () => {
           fraudAlert = 'suspeita';
           riskScore = 50;
         }
-        
+
         // Update submission with OCR results
         await supabase.from('task_submissions').update({
           ocr_extracted_code: ocrResult.foundCodes?.join(', ') || null,
@@ -340,18 +340,18 @@ const AdminDashboard = () => {
           fraud_alert: fraudAlert,
           risk_score: riskScore
         }).eq('id', sub.id);
-        
+
         // Update local state
-        setSubmissions(prev => prev.map(s => 
-          s.id === sub.id ? { 
-            ...s, 
+        setSubmissions(prev => prev.map(s =>
+          s.id === sub.id ? {
+            ...s,
             ocr_extracted_code: ocrResult.foundCodes?.join(', ') || null,
             ocr_confidence: ocrResult.confidence,
             fraudAlert,
             riskScore
           } : s
         ));
-        
+
       } catch (error) {
         console.error('OCR error for submission:', sub.id, error);
       } finally {
@@ -1615,8 +1615,8 @@ const AdminDashboard = () => {
                           src={sub.screenshot_url}
                           alt="Captura"
                           className="w-32 h-24 object-cover rounded-lg border border-border cursor-pointer hover:opacity-80 transition-opacity"
-                          onClick={() => setPreviewFile({ 
-                            data: sub.screenshot_url, 
+                          onClick={() => setPreviewFile({
+                            data: sub.screenshot_url,
                             title: `Captura de ${sub.profiles?.full_name || sub.profiles?.email}`,
                             extractedCode: sub.ocr_extracted_code || sub.unique_comment_code,
                             fraudAlert: sub.fraud_alert
