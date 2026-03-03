@@ -1,11 +1,9 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, ExternalLink, Upload, Check, X, Copy, AlertTriangle, Loader2, Smartphone, Monitor, Lock } from 'lucide-react';
+import { Play, Pause, ExternalLink, Upload, Check, X, Copy, AlertTriangle, Loader2, Smartphone, Monitor } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateUniqueCommentCode, generateDeviceFingerprint, formatTime } from '@/lib/fraudPrevention';
 import { performOCR, validateOCRMatch } from '@/lib/ocrService';
-import { useVideoTask } from '@/contexts/VideoTaskContext';
 
 export interface VideoSubmissionData {
   screenshotData: string;
@@ -39,14 +37,12 @@ const YouTubePlayer = ({
   videoId,
   onTimeUpdate,
   requiredTime = 90,
-  onVideoComplete,
-  playerKey
+  onVideoComplete
 }: {
   videoId: string;
   onTimeUpdate: (seconds: number) => void;
   requiredTime: number;
   onVideoComplete?: () => void;
-  playerKey?: number;
 }) => {
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -67,22 +63,13 @@ const YouTubePlayer = ({
   }, []);
 
   useEffect(() => {
-    // Reset player when key changes
-    if (playerKey && playerRef.current) {
-      playerRef.current.destroy();
-      playerRef.current = null;
-    }
-  }, [playerKey]);
-
-  useEffect(() => {
     const tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
     const firstScriptTag = document.getElementsByTagName('script')[0];
     firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
 
     (window as any).onYouTubeIframeAPIReady = () => {
-      const playerId = playerKey ? `youtube-player-${playerKey}` : 'youtube-player';
-      playerRef.current = new (window as any).YT.Player(playerId, {
+      playerRef.current = new (window as any).YT.Player('youtube-player', {
         videoId,
         playerVars: {
           autoplay: 0,
@@ -123,7 +110,7 @@ const YouTubePlayer = ({
         }
       }
     };
-
+    
     const interval = setInterval(handleSeek, 500);
     return () => clearInterval(interval);
   }, [currentTime]);
@@ -159,7 +146,7 @@ const YouTubePlayer = ({
     <div className="space-y-3">
       <div className="aspect-video rounded-lg overflow-hidden bg-black relative">
         <div id="youtube-player" className="w-full h-full" />
-
+        
         {/* Mobile warning overlay */}
         {isMobile && (
           <div className="absolute top-2 right-2 bg-black/60 px-2 py-1 rounded text-xs flex items-center gap-1 text-white">
@@ -244,36 +231,10 @@ export default function VideoTaskPlayer({
   const [ocrProgress, setOcrProgress] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
 
-  // Video task context for single popup lock
-  const { activeVideoTaskId, openVideoTask, closeVideoTask, isAnyVideoTaskOpen } = useVideoTask();
-  const isThisTaskOpen = activeVideoTaskId === taskId;
-  const isOtherTaskOpen = isAnyVideoTaskOpen && !isThisTaskOpen;
-
   const [uniqueCode, setUniqueCode] = useState<string>('');
   const [deviceFingerprint, setDeviceFingerprint] = useState<string>('');
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [isVideoCompleted, setIsVideoCompleted] = useState(false);
-  const [playerKey, setPlayerKey] = useState(0);
-  
-  // Portal container ref for rendering outside parent hierarchy
-  const portalContainerRef = useRef<HTMLElement | null>(null);
-  
-  // Ensure portal container exists in document body
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    
-    let container = document.getElementById('video-task-portal-container');
-    if (!container) {
-      container = document.createElement('div');
-      container.id = 'video-task-portal-container';
-      document.body.appendChild(container);
-    }
-    portalContainerRef.current = container;
-    
-    return () => {
-      // Don't remove container on unmount to preserve for other tasks
-    };
-  }, []);
 
   const videoId = extractVideoId(videoUrl);
 
@@ -322,20 +283,6 @@ export default function VideoTaskPlayer({
       setIsVideoCompleted(true);
     }
   }, [isVideoCompletedInSession]);
-
-  // Prevent body scroll when modal is open
-  useEffect(() => {
-    const shouldBlock = (isOpen || showUpload) && isMobile;
-    if (shouldBlock) {
-      // Save original overflow style
-      const originalStyle = window.getComputedStyle(document.body).overflow;
-      document.body.style.overflow = 'hidden';
-
-      return () => {
-        document.body.style.overflow = originalStyle;
-      };
-    }
-  }, [isOpen, showUpload, isMobile]);
 
   useEffect(() => {
     if (isOpen && taskId && userId) {
@@ -486,8 +433,6 @@ export default function VideoTaskPlayer({
         setShowUpload(false);
         setSelectedFile(null);
         setIsOpen(false);
-        closeVideoTask();
-        setPlayerKey(k => k + 1); // Reset player to stop video
         setCanSubmit(false);
         setWatchedTime(0);
         setUniqueCode('');
@@ -514,43 +459,19 @@ export default function VideoTaskPlayer({
   return (
     <div className="space-y-3">
       <Button
-        onClick={() => {
-          if (isOtherTaskOpen) {
-            toast.error('Você só pode executar uma tarefa por vez. Feche o vídeo atual para continuar.');
-            return;
-          }
-          if (!openVideoTask(taskId)) {
-            toast.error('Você só pode executar uma tarefa por vez. Feche o vídeo atual para continuar.');
-            return;
-          }
-          setIsOpen(true);
-        }}
-        disabled={isOtherTaskOpen}
-        className={`w-full ${isOtherTaskOpen ? 'bg-gray-500 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
+        onClick={() => setIsOpen(true)}
+        className="w-full bg-red-600 hover:bg-red-700"
       >
-        {isOtherTaskOpen ? (
-          <>
-            <Lock size={18} className="mr-2" />
-            Bloqueado
-          </>
-        ) : (
-          <>
-            <Play size={18} className="mr-2" />
-            Assistir Vídeo
-          </>
-        )}
-        {isVideoCompleted && !isOtherTaskOpen && (
+        <Play size={18} className="mr-2" />
+        Assistir Vídeo
+        {isVideoCompleted && (
           <Check size={16} className="ml-2 text-green-400" />
         )}
       </Button>
 
       {isOpen && (
-        <div
-          className="fixed inset-0 z-[99999] flex items-start justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm overflow-hidden"
-        >
-          <div
-            className="glass rounded-2xl p-4 sm:p-6 w-[90%] sm:w-full max-w-4xl max-h-[90vh] overflow-auto"
-          >
+        <div className={`fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm ${isMobile ? 'overflow-y-auto' : ''}`}>
+          <div className={`glass rounded-2xl p-4 sm:p-6 w-full ${isMobile ? 'max-h-[95vh] overflow-y-auto my-4' : 'max-w-3xl max-h-[90vh] overflow-auto'}`}>
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2">
@@ -560,11 +481,7 @@ export default function VideoTaskPlayer({
                 </h3>
               </div>
               <button
-                onClick={() => {
-                  setIsOpen(false);
-                  closeVideoTask();
-                  setPlayerKey(k => k + 1); // Reset player to stop video
-                }}
+                onClick={() => setIsOpen(false)}
                 className="text-muted-foreground hover:text-foreground p-1"
               >
                 <X size={24} />
@@ -577,7 +494,6 @@ export default function VideoTaskPlayer({
               requiredTime={requiredTime}
               onTimeUpdate={handleTimeUpdateInternal}
               onVideoComplete={handleVideoComplete}
-              playerKey={playerKey}
             />
 
             {/* Instructions - Show after video is completed */}
@@ -653,10 +569,11 @@ export default function VideoTaskPlayer({
                   </Button>
 
                   <div className="flex-1">
-                    <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium ${canSubmit
-                      ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30'
-                      : 'bg-muted text-muted-foreground cursor-not-allowed border border-muted'
-                      }`}>
+                    <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium ${
+                      canSubmit
+                        ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30'
+                        : 'bg-muted text-muted-foreground cursor-not-allowed border border-muted'
+                    }`}>
                       <input
                         type="file"
                         accept="image/jpeg,image/png"
@@ -695,12 +612,8 @@ export default function VideoTaskPlayer({
 
       {/* Upload confirmation modal */}
       {showUpload && selectedFile && (
-        <div
-          className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm overflow-hidden"
-        >
-          <div
-            className="glass rounded-2xl p-4 sm:p-6 w-[90%] sm:w-full max-w-md overflow-auto"
-          >
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="glass rounded-2xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold">Confirmar Envio</h3>
               <button
