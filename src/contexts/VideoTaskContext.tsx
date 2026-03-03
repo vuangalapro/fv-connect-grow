@@ -2,19 +2,21 @@ import { createContext, useContext, useState, useCallback, ReactNode } from 'rea
 
 interface VideoTaskContextType {
     activeVideoTaskId: string | null;
-    openVideoTask: (taskId: string) => boolean; // Returns true if successful, false if blocked
+    openVideoTask: (taskId: string) => boolean;
     closeVideoTask: () => void;
     isAnyVideoTaskOpen: boolean;
+    setSwitchToReviewsCallback?: (callback: () => void) => void;
+    triggerSwitchToReviews?: () => void;
 }
 
 const VideoTaskContext = createContext<VideoTaskContextType | undefined>(undefined);
 
 export function VideoTaskProvider({ children }: { children: ReactNode }) {
     const [activeVideoTaskId, setActiveVideoTaskId] = useState<string | null>(null);
+    const [switchToReviewsCallback, setSwitchToReviewsCallback] = useState<(() => void) | null>(null);
 
     const openVideoTask = useCallback((taskId: string) => {
         if (activeVideoTaskId && activeVideoTaskId !== taskId) {
-            // Another task is already open - block this one
             return false;
         }
         setActiveVideoTaskId(taskId);
@@ -27,12 +29,24 @@ export function VideoTaskProvider({ children }: { children: ReactNode }) {
 
     const isAnyVideoTaskOpen = activeVideoTaskId !== null;
 
+    const setSwitchToReviewsCallbackFn = useCallback((callback: () => void) => {
+        setSwitchToReviewsCallback(() => callback);
+    }, []);
+
+    const triggerSwitchToReviews = useCallback(() => {
+        if (switchToReviewsCallback) {
+            switchToReviewsCallback();
+        }
+    }, [switchToReviewsCallback]);
+
     return (
         <VideoTaskContext.Provider value={{
             activeVideoTaskId,
             openVideoTask,
             closeVideoTask,
-            isAnyVideoTaskOpen
+            isAnyVideoTaskOpen,
+            setSwitchToReviewsCallback: setSwitchToReviewsCallbackFn,
+            triggerSwitchToReviews
         }}>
             {children}
         </VideoTaskContext.Provider>

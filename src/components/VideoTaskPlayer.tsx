@@ -32,6 +32,7 @@ interface VideoTaskPlayerProps {
   onTimeUpdate?: (seconds: number) => void;
   onReadyToSubmit?: () => void;
   onSubmit?: (submissionData: VideoSubmissionData) => Promise<void>;
+  onSubmitted?: () => void; // Callback after successful submission to switch panels
 }
 
 const YouTubePlayer = ({
@@ -234,6 +235,7 @@ export default function VideoTaskPlayer({
   onTimeUpdate,
   onReadyToSubmit,
   onSubmit,
+  onSubmitted,
 }: VideoTaskPlayerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [watchedTime, setWatchedTime] = useState(0);
@@ -246,7 +248,7 @@ export default function VideoTaskPlayer({
   const [isMobile, setIsMobile] = useState(false);
 
   // Video task context for single popup lock
-  const { activeVideoTaskId, openVideoTask, closeVideoTask, isAnyVideoTaskOpen } = useVideoTask();
+  const { activeVideoTaskId, openVideoTask, closeVideoTask, isAnyVideoTaskOpen, triggerSwitchToReviews } = useVideoTask();
   const isThisTaskOpen = activeVideoTaskId === taskId;
   const isOtherTaskOpen = isAnyVideoTaskOpen && !isThisTaskOpen;
 
@@ -433,11 +435,11 @@ export default function VideoTaskPlayer({
           };
 
           if (!validation.isMatch) {
-            toast.warning('ATENÇÃO: Código não encontrado no screenshot. O admin irá validar manualmente.');
+            console.log('OCR: Code not found in screenshot - will be reviewed by admin');
           }
         } catch (ocrError) {
           console.error('OCR Error:', ocrError);
-          toast.warning('OCR falhou. O admin irá validar manualmente.');
+          // Silent failure - admin will review manually
           ocrResult = {
             extractedText: '',
             foundCodes: [],
@@ -473,6 +475,7 @@ export default function VideoTaskPlayer({
           await onSubmit(submissionData);
         }
 
+        // Close popup and switch to reviews panel
         setShowUpload(false);
         setSelectedFile(null);
         setIsOpen(false);
@@ -481,6 +484,14 @@ export default function VideoTaskPlayer({
         setWatchedTime(0);
         setUniqueCode('');
         setIsVideoCompleted(false);
+
+        // Trigger switch to reviews panel silently
+        if (triggerSwitchToReviews) {
+          triggerSwitchToReviews();
+        }
+        if (onSubmitted) {
+          onSubmitted();
+        }
       };
       reader.readAsDataURL(selectedFile);
     } catch (error) {

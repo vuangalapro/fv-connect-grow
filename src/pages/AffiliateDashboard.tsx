@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { useVideoTask } from '@/contexts/VideoTaskContext';
 import VideoTaskPlayer from '@/components/VideoTaskPlayer';
 
 const SUPPORT_EMAIL = import.meta.env.VITE_SUPPORT_EMAIL || 'philipvuangala@gmail.com';
@@ -40,6 +41,7 @@ const menuItems: { id: Panel; label: string; icon: any }[] = [
 
 const AffiliateDashboard = () => {
   const { user, loading, logout, refreshProfile } = useAuth();
+  const { setSwitchToReviewsCallback } = useVideoTask();
   const navigate = useNavigate();
   const [panel, setPanel] = useState<Panel>('home');
   const [slide, setSlide] = useState(0);
@@ -180,6 +182,15 @@ const AffiliateDashboard = () => {
       fetchData();
     }
   }, [loading, user, panel, fetchData]);
+
+  // Register callback for switching to reviews panel after task submission
+  useEffect(() => {
+    if (setSwitchToReviewsCallback) {
+      setSwitchToReviewsCallback(() => {
+        setPanel('reviews');
+      });
+    }
+  }, [setSwitchToReviewsCallback]);
 
   // Fetch support messages when support panel is opened
   useEffect(() => {
@@ -612,6 +623,10 @@ const AffiliateDashboard = () => {
                         }}
                         onReadyToSubmit={() => {
                           console.log('Ready to submit for task:', task.id);
+                        }}
+                        onSubmitted={() => {
+                          // Switch to reviews panel after submission
+                          setPanel('reviews');
                         }}
                         onSubmit={async (submissionData) => {
                           const { screenshotData, watchedTime, uniqueCommentCode, deviceFingerprint, startTime, watchSessionData, ocrResult } = submissionData;
