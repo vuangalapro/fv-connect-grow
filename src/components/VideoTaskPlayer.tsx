@@ -38,12 +38,14 @@ const YouTubePlayer = ({
   videoId,
   onTimeUpdate,
   requiredTime = 90,
-  onVideoComplete
+  onVideoComplete,
+  playerKey
 }: {
   videoId: string;
   onTimeUpdate: (seconds: number) => void;
   requiredTime: number;
   onVideoComplete?: () => void;
+  playerKey?: number;
 }) => {
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -64,13 +66,22 @@ const YouTubePlayer = ({
   }, []);
 
   useEffect(() => {
+    // Reset player when key changes
+    if (playerKey && playerRef.current) {
+      playerRef.current.destroy();
+      playerRef.current = null;
+    }
+  }, [playerKey]);
+
+  useEffect(() => {
     const tag = document.createElement('script');
     tag.src = 'https://www.youtube.com/iframe_api';
     const firstScriptTag = document.getElementsByTagName('script')[0];
     firstScriptTag.parentNode?.insertBefore(tag, firstScriptTag);
 
     (window as any).onYouTubeIframeAPIReady = () => {
-      playerRef.current = new (window as any).YT.Player('youtube-player', {
+      const playerId = playerKey ? `youtube-player-${playerKey}` : 'youtube-player';
+      playerRef.current = new (window as any).YT.Player(playerId, {
         videoId,
         playerVars: {
           autoplay: 0,
@@ -241,6 +252,7 @@ export default function VideoTaskPlayer({
   const [deviceFingerprint, setDeviceFingerprint] = useState<string>('');
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [isVideoCompleted, setIsVideoCompleted] = useState(false);
+  const [playerKey, setPlayerKey] = useState(0);
 
   const videoId = extractVideoId(videoUrl);
 
@@ -454,6 +466,7 @@ export default function VideoTaskPlayer({
         setSelectedFile(null);
         setIsOpen(false);
         closeVideoTask();
+        setPlayerKey(k => k + 1); // Reset player to stop video
         setCanSubmit(false);
         setWatchedTime(0);
         setUniqueCode('');
@@ -529,6 +542,7 @@ export default function VideoTaskPlayer({
                 onClick={() => {
                   setIsOpen(false);
                   closeVideoTask();
+                  setPlayerKey(k => k + 1); // Reset player to stop video
                 }}
                 className="text-muted-foreground hover:text-foreground p-1"
               >
@@ -542,6 +556,7 @@ export default function VideoTaskPlayer({
               requiredTime={requiredTime}
               onTimeUpdate={handleTimeUpdateInternal}
               onVideoComplete={handleVideoComplete}
+              playerKey={playerKey}
             />
 
             {/* Instructions - Show after video is completed */}
