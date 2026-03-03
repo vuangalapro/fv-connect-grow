@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, ExternalLink, Upload, Check, X, Copy, AlertTriangle, Loader2 } from 'lucide-react';
+import { Play, Pause, ExternalLink, Upload, Check, X, Copy, AlertTriangle, Loader2, Smartphone, Monitor } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateUniqueCommentCode, generateDeviceFingerprint, formatTime } from '@/lib/fraudPrevention';
 import { performOCR, validateOCRMatch } from '@/lib/ocrService';
@@ -48,8 +48,19 @@ const YouTubePlayer = ({
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [hasReachedTime, setHasReachedTime] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const playerRef = useRef<any>(null);
   const intervalRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // Detect mobile device
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   useEffect(() => {
     const tag = document.createElement('script');
@@ -62,9 +73,15 @@ const YouTubePlayer = ({
         videoId,
         playerVars: {
           autoplay: 0,
-          controls: 1,
-          rel: 0,
-          fs: 1,
+          // Disable keyboard controls and progress bar features for anti-fraud
+          disablekb: 1,        // Disable keyboard controls
+          fs: 0,               // Disable fullscreen button
+          rel: 0,              // No related videos
+          showinfo: 0,         // Hide video info
+          egm: 0,              // No enhanced genie menu
+          modestbranding: 1,  // Minimal branding
+          // Disable seeking via progress bar
+          seek_to_start: undefined,
         },
         events: {
           onReady: () => setIsReady(true),
@@ -81,6 +98,22 @@ const YouTubePlayer = ({
       }
     };
   }, [videoId]);
+
+  // Block seeking attempts
+  useEffect(() => {
+    const handleSeek = () => {
+      if (playerRef.current && playerRef.current.getCurrentTime) {
+        const current = playerRef.current.getCurrentTime();
+        // If user tries to seek forward beyond current watched time, block it
+        if (current > currentTime + 5) {
+          playerRef.current.seekTo(currentTime, true);
+        }
+      }
+    };
+    
+    const interval = setInterval(handleSeek, 500);
+    return () => clearInterval(interval);
+  }, [currentTime]);
 
   useEffect(() => {
     if (isReady && isPlaying) {
@@ -111,14 +144,22 @@ const YouTubePlayer = ({
 
   return (
     <div className="space-y-3">
-      <div className="aspect-video rounded-lg overflow-hidden bg-black">
+      <div className="aspect-video rounded-lg overflow-hidden bg-black relative">
         <div id="youtube-player" className="w-full h-full" />
+        
+        {/* Mobile warning overlay */}
+        {isMobile && (
+          <div className="absolute top-2 right-2 bg-black/60 px-2 py-1 rounded text-xs flex items-center gap-1 text-white">
+            <Smartphone size={12} />
+            Mobile
+          </div>
+        )}
       </div>
 
       <div className="flex items-center justify-between text-sm">
         <div className="flex items-center gap-2">
           <span className={hasReachedTime ? 'text-green-400' : 'text-muted-foreground'}>
-            Tempo assistido: {formatTime(currentTime)} / {formatTime(requiredTime)}
+            Tempo: {formatTime(currentTime)} / {formatTime(requiredTime)}
           </span>
           {hasReachedTime && (
             <span className="bg-green-500/20 text-green-400 px-2 py-0.5 rounded text-xs flex items-center gap-1">
@@ -146,8 +187,9 @@ const YouTubePlayer = ({
       </div>
 
       {!hasReachedTime && (
-        <p className="text-xs text-yellow-400 bg-yellow-500/10 p-2 rounded">
-          ⚠️ Assista pelo menos {formatTime(requiredTime)} para poder enviar a prova
+        <p className="text-xs text-yellow-400 bg-yellow-500/10 p-2 rounded flex items-center gap-2">
+          <AlertTriangle size={14} />
+          Assista pelo menos {formatTime(requiredTime)} para continuar
         </p>
       )}
     </div>
@@ -167,6 +209,9 @@ const extractVideoId = (url: string): string | null => {
   return null;
 };
 
+// Local storage key for completed videos
+const getCompletedVideosKey = (userId: string) => `completed_videos_${userId}`;
+
 export default function VideoTaskPlayer({
   taskId,
   userId,
@@ -184,6 +229,7 @@ export default function VideoTaskPlayer({
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessingOCR, setIsProcessingOCR] = useState(false);
   const [ocrProgress, setOcrProgress] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
 
   const [uniqueCode, setUniqueCode] = useState<string>('');
   const [deviceFingerprint, setDeviceFingerprint] = useState<string>('');
@@ -191,6 +237,52 @@ export default function VideoTaskPlayer({
   const [isVideoCompleted, setIsVideoCompleted] = useState(false);
 
   const videoId = extractVideoId(videoUrl);
+
+  // Check if this video was already completed in this session
+  const isVideoCompletedInSession = useCallback(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const completed = localStorage.getItem(getCompletedVideosKey(userId));
+      if (completed) {
+        const parsed = JSON.parse(completed);
+        return parsed[taskId] === true;
+      }
+    } catch (e) {
+      console.error('Error reading completed videos:', e);
+    }
+    return false;
+  }, [userId, taskId]);
+
+  // Mark video as completed in localStorage
+  const markVideoCompleted = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const completed = localStorage.getItem(getCompletedVideosKey(userId));
+      const parsed = completed ? JSON.parse(completed) : {};
+      parsed[taskId] = true;
+      localStorage.setItem(getCompletedVideosKey(userId), JSON.stringify(parsed));
+    } catch (e) {
+      console.error('Error saving completed video:', e);
+    }
+  }, [userId, taskId]);
+
+  // Check if device is mobile
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Check if already completed video
+  useEffect(() => {
+    if (isVideoCompletedInSession()) {
+      setCanSubmit(true);
+      setIsVideoCompleted(true);
+    }
+  }, [isVideoCompletedInSession]);
 
   useEffect(() => {
     if (isOpen && taskId && userId) {
@@ -203,10 +295,10 @@ export default function VideoTaskPlayer({
 
       setStartTime(new Date());
       setWatchedTime(0);
-      setCanSubmit(false);
-      setIsVideoCompleted(false);
+      setCanSubmit(isVideoCompletedInSession());
+      setIsVideoCompleted(isVideoCompletedInSession());
     }
-  }, [isOpen, taskId, userId]);
+  }, [isOpen, taskId, userId, isVideoCompletedInSession]);
 
   // Track watch sessions for anti-fraud
   const watchSessionRef = useRef<{ start: number, end: number | null }[]>([]);
@@ -233,22 +325,24 @@ export default function VideoTaskPlayer({
 
     if (seconds >= requiredTime && !canSubmit) {
       setCanSubmit(true);
+      markVideoCompleted();
       onReadyToSubmit?.();
     }
     onTimeUpdate?.(seconds);
-  }, [requiredTime, canSubmit, onReadyToSubmit, onTimeUpdate]);
+  }, [requiredTime, canSubmit, onReadyToSubmit, onTimeUpdate, markVideoCompleted]);
 
   const handleVideoComplete = useCallback(() => {
     setIsVideoCompleted(true);
+    markVideoCompleted();
     if (!canSubmit) {
       setCanSubmit(true);
       toast.success('Vídeo assistido! Agora você pode abrir no YouTube e comentar.');
     }
-  }, [canSubmit]);
+  }, [canSubmit, markVideoCompleted]);
 
   const copyCodeToClipboard = () => {
     navigator.clipboard.writeText(uniqueCode);
-    toast.success('Código copiado! Cole no comentário do YouTube.');
+    toast.success('Código copiado!');
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -370,64 +464,31 @@ export default function VideoTaskPlayer({
       >
         <Play size={18} className="mr-2" />
         Assistir Vídeo
+        {isVideoCompleted && (
+          <Check size={16} className="ml-2 text-green-400" />
+        )}
       </Button>
 
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="glass rounded-2xl p-6 w-full max-w-3xl max-h-[90vh] overflow-auto">
+        <div className={`fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm ${isMobile ? 'overflow-y-auto' : ''}`}>
+          <div className={`glass rounded-2xl p-4 sm:p-6 w-full ${isMobile ? 'max-h-[95vh] overflow-y-auto my-4' : 'max-w-3xl max-h-[90vh] overflow-auto'}`}>
+            {/* Header */}
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold">Tarefa de Vídeo YouTube</h3>
+              <div className="flex items-center gap-2">
+                {isMobile && <Smartphone size={20} />}
+                <h3 className="text-lg font-bold">
+                  {isMobile ? 'Tarefa Vídeo' : 'Tarefa de Vídeo YouTube'}
+                </h3>
+              </div>
               <button
                 onClick={() => setIsOpen(false)}
-                className="text-muted-foreground hover:text-foreground"
+                className="text-muted-foreground hover:text-foreground p-1"
               >
                 <X size={24} />
               </button>
             </div>
 
-            {isVideoCompleted && uniqueCode && (
-              <div className="mb-4 p-4 bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm text-purple-300 font-medium">🔑 Seu código único para comentário:</p>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={copyCodeToClipboard}
-                    className="text-purple-300 hover:text-purple-100"
-                  >
-                    <Copy size={14} className="mr-1" />
-                    Copiar
-                  </Button>
-                </div>
-                <div className="bg-black/40 rounded-lg p-3 font-mono text-lg text-center text-white tracking-wider">
-                  {uniqueCode}
-                </div>
-                <p className="text-xs text-yellow-400 mt-2 flex items-center gap-1">
-                  <AlertTriangle size={12} />
-                  Comente este código EXATAMENTE como mostrado acima no YouTube
-                </p>
-              </div>
-            )}
-
-            <div className="mb-4 p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-              <p className="text-sm text-blue-300 font-medium mb-2">📋 Instruções:</p>
-              <ol className="text-xs text-muted-foreground space-y-1 list-decimal list-inside">
-                <li>Assista ao vídeo por pelo menos <strong>{Math.floor(requiredTime / 60)}:{String(requiredTime % 60).padStart(2, '0')}</strong> minutos</li>
-                <li>Após completar, seu código único será exibido acima</li>
-                <li>Clique em "Abrir no YouTube" para ir ao vídeo</li>
-                <li>
-                  <strong>⚠️ NO YOUTUBE:</strong>
-                  <ul className="list-disc list-inside ml-2 mt-1">
-                    <li>Curtir o vídeo (like)</li>
-                    <li>Comentar o código <strong>{uniqueCode || 'XXXXXX'}</strong></li>
-                    <li>Inscrever-se no canal</li>
-                  </ul>
-                </li>
-                <li>Capture a tela mostrando as 3 ações realizadas</li>
-                <li>Volte aqui e envie a captura</li>
-              </ol>
-            </div>
-
+            {/* Video Player - Always shown first */}
             <YouTubePlayer
               videoId={videoId}
               requiredTime={requiredTime}
@@ -435,40 +496,123 @@ export default function VideoTaskPlayer({
               onVideoComplete={handleVideoComplete}
             />
 
-            <div className="flex flex-col sm:flex-row gap-3 mt-4">
-              <Button
-                variant="outline"
-                className="flex-1"
-                disabled={!canSubmit}
-                onClick={() => window.open(videoUrl, '_blank')}
-              >
-                <ExternalLink size={18} className="mr-2" />
-                Abrir no YouTube
-              </Button>
+            {/* Instructions - Show after video is completed */}
+            {isVideoCompleted && uniqueCode && (
+              <div className="mt-4 space-y-4">
+                {/* Unique Code Display */}
+                <div className="p-4 bg-gradient-to-r from-purple-600/30 to-blue-600/30 border border-purple-500/50 rounded-xl">
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-sm text-purple-300 font-bold flex items-center gap-2">
+                      🔑 Seu código único:
+                    </p>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={copyCodeToClipboard}
+                      className="text-purple-300 hover:text-purple-100 h-8"
+                    >
+                      <Copy size={14} className="mr-1" />
+                      Copiar
+                    </Button>
+                  </div>
+                  <div className="bg-black/60 rounded-lg p-4 font-mono text-lg sm:text-xl text-center text-white tracking-wider border border-purple-500/30">
+                    {uniqueCode}
+                  </div>
+                  <p className="text-xs text-yellow-400 mt-3 flex items-start gap-2 bg-yellow-500/10 p-2 rounded">
+                    <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
+                    Comente este código EXATAMENTE como mostrado acima no YouTube
+                  </p>
+                </div>
 
-              <div className="flex-1">
-                <label className={`flex items-center justify-center gap-2 px-4 py-2 rounded-lg cursor-pointer transition-colors ${canSubmit
-                  ? 'bg-primary/20 text-primary hover:bg-primary/30'
-                  : 'bg-muted text-muted-foreground cursor-not-allowed'
-                  }`}>
-                  <input
-                    type="file"
-                    accept="image/jpeg,image/png"
-                    className="hidden"
-                    onChange={handleFileSelect}
-                    disabled={!canSubmit}
-                  />
-                  <Upload size={18} />
-                  {selectedFile ? selectedFile.name : 'Anexar captura'}
-                </label>
+                {/* Instructions */}
+                <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
+                  <p className="text-sm text-blue-300 font-bold mb-3 flex items-center gap-2">
+                    📋 O que fazer no YouTube:
+                  </p>
+                  <ol className="text-xs sm:text-sm text-muted-foreground space-y-2">
+                    <li className="flex items-start gap-2">
+                      <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">1</span>
+                      <span>Clique em <strong>"Abrir no YouTube"</strong> abaixo</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">2</span>
+                      <span>⚠️ <strong>Curtir</strong> o vídeo (botão like)</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">3</span>
+                      <span>⚠️ <strong>Comentar</strong> o código: <strong className="text-purple-300">{uniqueCode}</strong></span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">4</span>
+                      <span>⚠️ <strong>Inscrever-se</strong> no canal</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">5</span>
+                      <span>Tirar <strong>screenshot</strong> mostrando as 3 ações</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">6</span>
+                      <span>Voltar aqui e <strong>enviar a captura</strong></span>
+                    </li>
+                  </ol>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/10"
+                    onClick={() => window.open(videoUrl, '_blank')}
+                  >
+                    <ExternalLink size={18} className="mr-2" />
+                    Abrir no YouTube
+                  </Button>
+
+                  <div className="flex-1">
+                    <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium ${
+                      canSubmit
+                        ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30'
+                        : 'bg-muted text-muted-foreground cursor-not-allowed border border-muted'
+                    }`}>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png"
+                        className="hidden"
+                        onChange={handleFileSelect}
+                        disabled={!canSubmit}
+                      />
+                      <Upload size={18} />
+                      {selectedFile ? selectedFile.name : '📸 Anexar Prova'}
+                    </label>
+                  </div>
+                </div>
+
+                {/* Status indicator */}
+                {canSubmit && !selectedFile && (
+                  <p className="text-xs text-center text-green-400 bg-green-500/10 p-2 rounded flex items-center justify-center gap-2">
+                    <Check size={14} />
+                    Vídeo assistido! Você pode enviar a prova
+                  </p>
+                )}
               </div>
-            </div>
+            )}
+
+            {/* Pre-completion message */}
+            {!isVideoCompleted && (
+              <div className="mt-4 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
+                <p className="text-sm text-yellow-400 flex items-center gap-2">
+                  <AlertTriangle size={18} />
+                  Assista o vídeo por pelo menos <strong>{Math.floor(requiredTime / 60)}:{String(requiredTime % 60).padStart(2, '0')}</strong> para continuar
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}
 
+      {/* Upload confirmation modal */}
       {showUpload && selectedFile && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="glass rounded-2xl p-6 w-full max-w-md">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-bold">Confirmar Envio</h3>
@@ -496,7 +640,7 @@ export default function VideoTaskPlayer({
                   />
                 </div>
                 <p className="text-xs text-muted-foreground mt-1">
-                  Aguarde, estamos verificando o código na imagem
+                  Aguarde, verificando o código na imagem
                 </p>
               </div>
             )}
@@ -504,13 +648,13 @@ export default function VideoTaskPlayer({
             <img
               src={URL.createObjectURL(selectedFile)}
               alt="Captura"
-              className="w-full rounded-lg mb-4"
+              className="w-full rounded-lg mb-4 max-h-64 object-contain bg-black"
             />
 
             {uniqueCode && (
-              <div className="mb-4 p-2 bg-muted rounded-lg">
-                <p className="text-xs text-muted-foreground">Código esperado:</p>
-                <p className="font-mono text-sm">{uniqueCode}</p>
+              <div className="mb-4 p-3 bg-purple-500/10 border border-purple-500/30 rounded-lg">
+                <p className="text-xs text-purple-300">Código esperado na imagem:</p>
+                <p className="font-mono text-sm text-white">{uniqueCode}</p>
               </div>
             )}
 
@@ -527,11 +671,11 @@ export default function VideoTaskPlayer({
                 Cancelar
               </Button>
               <Button
-                className="flex-1"
+                className="flex-1 bg-green-600 hover:bg-green-700"
                 onClick={handleSubmit}
                 disabled={isUploading || isProcessingOCR}
               >
-                {isUploading ? 'Enviando...' : isProcessingOCR ? 'Processando...' : 'Confirmar'}
+                {isUploading ? 'Enviando...' : isProcessingOCR ? 'Processando...' : '✅ Confirmar'}
               </Button>
             </div>
           </div>
