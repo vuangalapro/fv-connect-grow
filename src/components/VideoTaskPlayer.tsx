@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
-import { Play, Pause, ExternalLink, Upload, Check, X, Copy, AlertTriangle, Loader2, Smartphone, Monitor, Lock } from 'lucide-react';
+import { Play, Pause, ExternalLink, Upload, Check, X, AlertTriangle, Loader2, Smartphone, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { generateUniqueCommentCode, generateDeviceFingerprint, formatTime } from '@/lib/fraudPrevention';
 import { performOCR, validateOCRMatch } from '@/lib/ocrService';
@@ -532,31 +532,6 @@ export default function VideoTaskPlayer({
             {/* Instructions - Show after video is completed */}
             {isVideoCompleted && uniqueCode && (
               <div className="mt-4 space-y-4">
-                {/* Unique Code Display */}
-                <div className="p-4 bg-gradient-to-r from-purple-600/30 to-blue-600/30 border border-purple-500/50 rounded-xl">
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-sm text-purple-300 font-bold flex items-center gap-2">
-                      🔑 Seu código único:
-                    </p>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={copyCodeToClipboard}
-                      className="text-purple-300 hover:text-purple-100 h-8"
-                    >
-                      <Copy size={14} className="mr-1" />
-                      Copiar
-                    </Button>
-                  </div>
-                  <div className="bg-black/60 rounded-lg p-4 font-mono text-lg sm:text-xl text-center text-white tracking-wider border border-purple-500/30">
-                    {uniqueCode}
-                  </div>
-                  <p className="text-xs text-yellow-400 mt-3 flex items-start gap-2 bg-yellow-500/10 p-2 rounded">
-                    <AlertTriangle size={14} className="mt-0.5 flex-shrink-0" />
-                    Comente este código EXATAMENTE como mostrado acima no YouTube
-                  </p>
-                </div>
-
                 {/* Instructions */}
                 <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
                   <p className="text-sm text-blue-300 font-bold mb-3 flex items-center gap-2">
@@ -569,15 +544,15 @@ export default function VideoTaskPlayer({
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">2</span>
-                      <span>Comente o código: <strong className="text-purple-300">{uniqueCode}</strong></span>
+                      <span>Curta o vídeo e <strong>inscreva-se no canal</strong></span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">3</span>
-                      <span>Tire <strong>screenshot do comentário</strong> com o código</span>
+                      <span>Tire <strong>screenshot do vídeo</strong> com seu like e inscrição</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">4</span>
-                      <span>Volte aqui e <strong>envie a captura do comentário</strong></span>
+                      <span>Volte aqui e <strong>envie a captura</strong></span>
                     </li>
                   </ol>
                 </div>
