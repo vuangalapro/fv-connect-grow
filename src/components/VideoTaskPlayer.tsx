@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, ExternalLink, Upload, Check, X, Copy, AlertTriangle, Loader2, Smartphone, Monitor, Lock } from 'lucide-react';
 import { toast } from 'sonner';
@@ -253,6 +254,26 @@ export default function VideoTaskPlayer({
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [isVideoCompleted, setIsVideoCompleted] = useState(false);
   const [playerKey, setPlayerKey] = useState(0);
+  
+  // Portal container ref for rendering outside parent hierarchy
+  const portalContainerRef = useRef<HTMLElement | null>(null);
+  
+  // Ensure portal container exists in document body
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    let container = document.getElementById('video-task-portal-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'video-task-portal-container';
+      document.body.appendChild(container);
+    }
+    portalContainerRef.current = container;
+    
+    return () => {
+      // Don't remove container on unmount to preserve for other tasks
+    };
+  }, []);
 
   const videoId = extractVideoId(videoUrl);
 
@@ -525,7 +546,7 @@ export default function VideoTaskPlayer({
 
       {isOpen && (
         <div
-          className="fixed inset-0 z-[100] flex items-start justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm overflow-hidden"
+          className="fixed inset-0 z-[99999] flex items-start justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm overflow-hidden"
         >
           <div
             className="glass rounded-2xl p-4 sm:p-6 w-[90%] sm:w-full max-w-4xl max-h-[90vh] overflow-auto"
@@ -675,7 +696,7 @@ export default function VideoTaskPlayer({
       {/* Upload confirmation modal */}
       {showUpload && selectedFile && (
         <div
-          className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm overflow-hidden"
+          className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/80 backdrop-blur-sm overflow-hidden"
         >
           <div
             className="glass rounded-2xl p-4 sm:p-6 w-[90%] sm:w-full max-w-md overflow-auto"
