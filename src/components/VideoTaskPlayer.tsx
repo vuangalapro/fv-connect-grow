@@ -38,12 +38,14 @@ const YouTubePlayer = ({
   videoId,
   onTimeUpdate,
   requiredTime = 90,
-  onVideoComplete
+  onVideoComplete,
+  onTimeReached
 }: {
   videoId: string;
   onTimeUpdate: (seconds: number) => void;
   requiredTime: number;
   onVideoComplete?: () => void;
+  onTimeReached?: () => void;
 }) => {
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -126,7 +128,12 @@ const YouTubePlayer = ({
 
           if (time >= requiredTime && !hasReachedTime) {
             setHasReachedTime(true);
+            // Stop the video when time limit is reached
+            if (playerRef.current && playerRef.current.pauseVideo) {
+              playerRef.current.pauseVideo();
+            }
             onVideoComplete?.();
+            onTimeReached?.();
           }
         }
       }, 1000);
@@ -213,6 +220,12 @@ const extractVideoId = (url: string): string | null => {
 // Local storage key for completed videos
 const getCompletedVideosKey = (userId: string) => `completed_videos_${userId}`;
 
+// Local storage key for unique codes per task
+const getUniqueCodeKey = (userId: string, taskId: string) => `video_code_${userId}_${taskId}`;
+
+// Local storage key for watch time
+const getWatchTimeKey = (userId: string, taskId: string) => `video_time_${userId}_${taskId}`;
+
 export default function VideoTaskPlayer({
   taskId,
   userId,
@@ -263,14 +276,24 @@ export default function VideoTaskPlayer({
   const markVideoCompleted = useCallback(() => {
     if (typeof window === 'undefined') return;
     try {
+      // Save completed status
       const completed = localStorage.getItem(getCompletedVideosKey(userId));
       const parsed = completed ? JSON.parse(completed) : {};
       parsed[taskId] = true;
       localStorage.setItem(getCompletedVideosKey(userId), JSON.stringify(parsed));
+      
+      // Save unique code (only if not already saved)
+      if (!localStorage.getItem(getUniqueCodeKey(userId, taskId))) {
+        const code = generateUniqueCommentCode(taskId, userId);
+        localStorage.setItem(getUniqueCodeKey(userId, taskId), code);
+      }
+      
+      // Save watch time
+      localStorage.setItem(getWatchTimeKey(userId, taskId), String(watchedTime));
     } catch (e) {
       console.error('Error saving completed video:', e);
     }
-  }, [userId, taskId]);
+  }, [userId, taskId, watchedTime]);
 
   // Check if device is mobile
   useEffect(() => {
@@ -292,19 +315,33 @@ export default function VideoTaskPlayer({
 
   useEffect(() => {
     if (isOpen && taskId && userId) {
-      const code = generateUniqueCommentCode(taskId, userId);
-      setUniqueCode(code);
+      // Check if there's a saved unique code for this task
+      const savedCode = localStorage.getItem(getUniqueCodeKey(userId, taskId));
+      const savedTime = localStorage.getItem(getWatchTimeKey(userId, taskId));
+      
+      // If video was already completed, use saved code and time
+      if (savedCode && savedTime) {
+        setUniqueCode(savedCode);
+        setWatchedTime(parseInt(savedTime, 10));
+        setCanSubmit(true);
+        setIsVideoCompleted(true);
+      } else {
+        // Generate new code only if not already completed
+        const code = generateUniqueCommentCode(taskId, userId);
+        setUniqueCode(code);
+        localStorage.setItem(getUniqueCodeKey(userId, taskId), code);
+        setWatchedTime(0);
+        setCanSubmit(false);
+        setIsVideoCompleted(false);
+      }
 
       generateDeviceFingerprint().then(fp => {
         setDeviceFingerprint(fp);
       });
 
       setStartTime(new Date());
-      setWatchedTime(0);
-      setCanSubmit(isVideoCompletedInSession());
-      setIsVideoCompleted(isVideoCompletedInSession());
     }
-  }, [isOpen, taskId, userId, isVideoCompletedInSession]);
+  }, [isOpen, taskId, userId]);
 
   // Track watch sessions for anti-fraud
   const watchSessionRef = useRef<{ start: number, end: number | null }[]>([]);
@@ -342,7 +379,7 @@ export default function VideoTaskPlayer({
     markVideoCompleted();
     if (!canSubmit) {
       setCanSubmit(true);
-      toast.success('Vídeo assistido! Agora você pode abrir no YouTube e comentar.');
+      toast.success('Vídeo assistido! Tempo limite atingido. Agora você pode abrir no YouTube e comentar.');
     }
   }, [canSubmit, markVideoCompleted]);
 
@@ -524,6 +561,7 @@ export default function VideoTaskPlayer({
               requiredTime={requiredTime}
               onTimeUpdate={handleTimeUpdateInternal}
               onVideoComplete={handleVideoComplete}
+              onTimeReached={handleVideoComplete}
             />
 
             {/* Instructions - Show after video is completed */}
@@ -566,23 +604,15 @@ export default function VideoTaskPlayer({
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">2</span>
-                      <span>⚠️ <strong>Curtir</strong> o vídeo (botão like)</span>
+                      <span>Comente o código: <strong className="text-purple-300">{uniqueCode}</strong></span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">3</span>
-                      <span>⚠️ <strong>Comentar</strong> o código: <strong className="text-purple-300">{uniqueCode}</strong></span>
+                      <span>Tire <strong>screenshot do comentário</strong> com o código</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">4</span>
-                      <span>⚠️ <strong>Inscrever-se</strong> no canal</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">5</span>
-                      <span>Tirar <strong>screenshot</strong> mostrando as 3 ações</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">6</span>
-                      <span>Voltar aqui e <strong>enviar a captura</strong></span>
+                      <span>Volte aqui e <strong>envie a captura do comentário</strong></span>
                     </li>
                   </ol>
                 </div>
@@ -611,7 +641,7 @@ export default function VideoTaskPlayer({
                         disabled={!canSubmit}
                       />
                       <Upload size={18} />
-                      {selectedFile ? selectedFile.name : '📸 Anexar Prova'}
+                      {selectedFile ? selectedFile.name : '📸 Enviar captura do comentário'}
                     </label>
                   </div>
                 </div>
