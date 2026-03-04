@@ -229,12 +229,13 @@ const AffiliateDashboard = () => {
     }
   }, [panel, user]);
 
-  // Initial loading - show minimal content while auth loads
+  // Loading screen
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto"></div>
+          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-muted-foreground animate-pulse font-medium">Carregando...</p>
         </div>
       </div>
     );
