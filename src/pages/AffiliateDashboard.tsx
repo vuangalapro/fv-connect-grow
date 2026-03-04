@@ -121,6 +121,7 @@ const AffiliateDashboard = () => {
           phone: profileData.phone || '',
           bankName: profileData.bank_name || '',
           bankAccount: profileData.bank_account || '',
+          penaltyCredit: profileData.penalty_credit ?? 100,
         });
         setBalance(parseFloat(profileData.balance || 0));
       }
@@ -623,7 +624,7 @@ const AffiliateDashboard = () => {
                           console.log('Video watched:', seconds, 'seconds');
                         }}
                         onSubmit={async (submissionData) => {
-                          const { screenshotData, watchedTime, uniqueCommentCode, deviceFingerprint, startTime, watchSessionData } = submissionData;
+                          const { screenshotData, watchedTime, deviceFingerprint, startTime } = submissionData;
 
                           try {
                             // Check if user already submitted this task
@@ -648,7 +649,6 @@ const AffiliateDashboard = () => {
                                   .update({
                                     screenshot_url: screenshotData,
                                     watched_time: watchedTime,
-                                    unique_comment_code: uniqueCommentCode,
                                     device_fingerprint: deviceFingerprint,
                                     start_time: startTime.toISOString(),
                                     screenshot_uploaded: true,
@@ -664,17 +664,12 @@ const AffiliateDashboard = () => {
                               }
                             }
 
-                            // Calculate risk score based on OCR result
-                            let fraudAlert: 'confiavel' | 'suspeita' | null = null;
-                            let riskScore = 0;
-
-                            // Remove watch_sessions as column doesn't exist in database yet
+                            // Simple submission without code
                             const submissionData: any = {
                               task_id: task.id,
                               user_id: user.id,
                               screenshot_url: screenshotData,
                               watched_time: watchedTime,
-                              unique_comment_code: uniqueCommentCode,
                               device_fingerprint: deviceFingerprint,
                               start_time: startTime.toISOString(),
                               screenshot_uploaded: true,

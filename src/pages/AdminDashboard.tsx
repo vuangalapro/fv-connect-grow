@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-import { performOCR, quickOCR } from '@/lib/ocrService';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
@@ -301,77 +300,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // Run OCR on video task submissions automatically
-  const processOCRForSubmissions = useCallback(async (subs: any[]) => {
-    const videoSubs = subs.filter(sub => sub.unique_comment_code && sub.screenshot_url);
-
-    for (const sub of videoSubs) {
-      if (processingOCR[sub.id]) continue;
-
-      setProcessingOCR(prev => ({ ...prev, [sub.id]: true }));
-
-      try {
-        const ocrResult = await quickOCR(sub.screenshot_url);
-
-        let fraudAlert: 'confiavel' | 'suspeita' | null = null;
-        let riskScore = 0;
-
-        // Check if code matches
-        if (ocrResult.foundCodes && ocrResult.foundCodes.length > 0) {
-          const codeMatch = ocrResult.foundCodes.some((code: string) =>
-            code.toUpperCase() === sub.unique_comment_code?.toUpperCase()
-          );
-
-          if (codeMatch && ocrResult.confidence > 0.5) {
-            fraudAlert = 'confiavel';
-          } else {
-            fraudAlert = 'suspeita';
-            riskScore = 30;
-          }
-        } else {
-          fraudAlert = 'suspeita';
-          riskScore = 50;
-        }
-
-        // Update submission with OCR results
-        await supabase.from('task_submissions').update({
-          ocr_extracted_code: ocrResult.foundCodes?.join(', ') || null,
-          ocr_confidence: ocrResult.confidence,
-          fraud_alert: fraudAlert,
-          risk_score: riskScore
-        }).eq('id', sub.id);
-
-        // Update local state
-        setSubmissions(prev => prev.map(s =>
-          s.id === sub.id ? {
-            ...s,
-            ocr_extracted_code: ocrResult.foundCodes?.join(', ') || null,
-            ocr_confidence: ocrResult.confidence,
-            fraudAlert,
-            riskScore
-          } : s
-        ));
-
-      } catch (error) {
-        console.error('OCR error for submission:', sub.id, error);
-      } finally {
-        setProcessingOCR(prev => ({ ...prev, [sub.id]: false }));
-      }
-    }
-  }, [processingOCR]);
-
-  useEffect(() => {
-    if (panel) {
-      fetchData();
-    }
-  }, [panel, user]);
-
-  // Run OCR when submissions are loaded
-  useEffect(() => {
-    if (submissions.length > 0 && panel === 'tasks') {
-      processOCRForSubmissions(submissions);
-    }
-  }, [submissions, panel]);
+  // NOTE: OCR processing is now disabled - admin reviews tasks manually
 
   const approveTask = async (sub: any) => {
     try {
