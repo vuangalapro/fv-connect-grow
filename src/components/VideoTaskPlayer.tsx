@@ -547,18 +547,19 @@ export default function VideoTaskPlayer({
 
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row gap-3">
-                  <Button
-                    variant="outline"
-                    className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/10"
+                  <a
+                    href={videoUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-lg border border-red-500/50 text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
                     onClick={() => {
                       setHasOpenedYouTube(true);
                       localStorage.setItem(getYouTubeOpenedKey(userId, taskId), 'true');
-                      window.open(videoUrl, '_blank');
                     }}
                   >
                     <ExternalLink size={18} className="mr-2" />
                     Abrir YouTube (Curtir & Inscrever)
-                  </Button>
+                  </a>
 
                   <div className="flex-1">
                     <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium ${canSubmit
