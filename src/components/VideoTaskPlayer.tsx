@@ -226,6 +226,9 @@ const getCompletedVideosKey = (userId: string) => `completed_videos_${userId}`;
 // Local storage key for watch time
 const getWatchTimeKey = (userId: string, taskId: string) => `video_time_${userId}_${taskId}`;
 
+// Local storage key for YouTube opened status
+const getYouTubeOpenedKey = (userId: string, taskId: string) => `youtube_opened_${userId}_${taskId}`;
+
 export default function VideoTaskPlayer({
   taskId,
   userId,
@@ -326,7 +329,9 @@ export default function VideoTaskPlayer({
         setCanSubmit(false);
         setIsVideoCompleted(false);
       }
-      setHasOpenedYouTube(false); // Reset YouTube opened state when task is opened
+      // Check if YouTube was already opened for this task
+      const savedYouTubeOpened = localStorage.getItem(getYouTubeOpenedKey(userId, taskId));
+      setHasOpenedYouTube(savedYouTubeOpened === 'true');
 
       generateDeviceFingerprint().then(fp => {
         setDeviceFingerprint(fp);
@@ -547,6 +552,7 @@ export default function VideoTaskPlayer({
                     className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/10"
                     onClick={() => {
                       setHasOpenedYouTube(true);
+                      localStorage.setItem(getYouTubeOpenedKey(userId, taskId), 'true');
                       window.open(videoUrl, '_blank');
                     }}
                   >
