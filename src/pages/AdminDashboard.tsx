@@ -118,10 +118,10 @@ const AdminDashboard = () => {
   const [processingOCR, setProcessingOCR] = useState<Record<string, boolean>>({});
   const [mobileMenu, setMobileMenu] = useState(false);
   const [ads, setAds] = useState<any[]>([]);
-  const [taskCount, setTaskCount] = useState(4);
-  const [taskLinks, setTaskLinks] = useState<string[]>(Array(4).fill(''));
-  const [taskTypes, setTaskTypes] = useState<string[]>(Array(4).fill('video'));
-  const [taskRequiredTimes, setTaskRequiredTimes] = useState<number[]>(Array(4).fill(90));
+  const [taskCount, setTaskCount] = useState(1);
+  const [taskLinks, setTaskLinks] = useState<string[]>(Array(1).fill(''));
+  const [taskTypes, setTaskTypes] = useState<string[]>(Array(1).fill('video'));
+  const [taskRequiredTimes, setTaskRequiredTimes] = useState<number[]>(Array(1).fill(90));
   const [existingTasks, setExistingTasks] = useState<Array<{ id: string; title: string; url: string; expires_at?: string; task_type?: string; required_time?: number }>>([]);
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
   const [previewFile, setPreviewFile] = useState<{ data: string; title: string; extractedCode?: string; fraudAlert?: string } | null>(null);
@@ -189,6 +189,9 @@ const AdminDashboard = () => {
         if (msgs) setSupportMessages(msgs);
       };
       fetchOverviewData();
+    } else if (panel) {
+      // Fetch data for the selected panel when admin opens a section
+      fetchData();
     }
   }, [panel, user]);
 
@@ -1755,7 +1758,7 @@ const AdminDashboard = () => {
             </div>
             <h2 className="text-2xl font-bold mb-6 font-display">Validar Tarefas ({submissions.filter(s => s.status === 'pending').length} pendentes)</h2>
             <div className="space-y-4">
-              {submissions.filter(sub => !processedTaskIds.current.includes(sub.id) && !analyzedTasks.has(sub.id)).map(sub => (
+              {submissions.filter(sub => !processedTaskIds.current.includes(sub.id)).map(sub => (
                 <div key={sub.id} className="glass rounded-2xl p-4">
                   <div className="flex items-start gap-4">
                     {sub.screenshot_url && (
@@ -2054,10 +2057,26 @@ const AdminDashboard = () => {
         {/* NEW TASKS */}
         {panel === 'newTasks' && (
           <div>
-            <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
-              <ArrowLeft size={16} /> Voltar
-            </button>
-            <h2 className="text-2xl font-bold mb-2 font-display">Configurar Tarefas</h2>
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                <ArrowLeft size={16} /> Voltar
+              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  setIsRefreshing(true);
+                  await fetchData();
+                  setIsRefreshing(false);
+                }}
+                disabled={isRefreshing}
+                className="gap-2"
+              >
+                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                Atualizar
+              </Button>
+            </div>
+            <h2 className="text-2xl font-bold mb-2 font-display">Tarefas Ativas</h2>
             <p className="text-muted-foreground mb-6">Defina o número de tarefas e os respetivos links do YouTube.</p>
 
             <div className="grid md:grid-cols-2 gap-6">
