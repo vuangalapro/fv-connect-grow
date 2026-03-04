@@ -1128,6 +1128,11 @@ const AdminDashboard = () => {
                 <Banknote className="text-orange-500 mb-2" size={24} />
                 <p className="font-medium text-foreground">Saques</p>
                 <p className="text-xs text-muted-foreground">{withdrawals.filter(w => w.status === 'pending').length} pendentes</p>
+                {withdrawals.filter(w => w.status === 'pending').length > 0 && (
+                  <p className="text-xs text-orange-400 font-bold mt-1">
+                    Total: {withdrawals.filter(w => w.status === 'pending').reduce((sum, w) => sum + parseFloat(w.amount || 0), 0).toFixed(2)} Kz
+                  </p>
+                )}
               </button>
               <button onClick={() => setPanel('ads')} className="p-4 rounded-xl bg-secondary/30 border border-secondary hover:bg-secondary/50 transition-colors text-left">
                 <Megaphone className="text-purple-500 mb-2" size={24} />
