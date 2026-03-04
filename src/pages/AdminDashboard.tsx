@@ -472,38 +472,48 @@ const AdminDashboard = () => {
           ? sub.screenshot_url
           : `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/screenshots/${sub.screenshot_url}`;
 
-        // Analyze using the URL
-        const result = await analyzeYouTubeScreenshot(imageUrl, {
-          taskId: sub.task_id,
-          userId: sub.user_id,
-        });
+        try {
+          // Analyze using the URL
+          const result = await analyzeYouTubeScreenshot(imageUrl, {
+            taskId: sub.task_id,
+            userId: sub.user_id,
+          });
 
-        // Save to audit
-        await saveAnalysisToAudit(result, {
-          taskId: sub.task_id,
-          userId: sub.user_id,
-        });
+          // Save to audit (ignore errors - table might not exist)
+          try {
+            await saveAnalysisToAudit(result, {
+              taskId: sub.task_id,
+              userId: sub.user_id,
+            });
+          } catch (auditError) {
+            console.warn('Could not save to audit log:', auditError);
+          }
 
-        // Store result
-        setVisualAnalysisResults(prev => ({
-          ...prev,
-          [sub.id]: result,
-        }));
+          // Store result
+          setVisualAnalysisResults(prev => ({
+            ...prev,
+            [sub.id]: result,
+          }));
 
-        // Show result to admin - simplified
-        const bothDetected = result.like_detected && result.subscribe_detected;
-        const oneDetected = result.like_detected || result.subscribe_detected;
+          // Show result to admin - simplified
+          const bothDetected = result.like_detected && result.subscribe_detected;
+          const oneDetected = result.like_detected || result.subscribe_detected;
 
-        let resultText: string;
-        if (bothDetected && result.confidence >= 0.7) {
-          resultText = '✅ Confiável';
-        } else if (oneDetected && result.confidence >= 0.5) {
-          resultText = '⚠️ Suspeito';
-        } else {
-          resultText = '🚨 Fraude';
+          let resultText: string;
+          if (bothDetected && result.confidence >= 0.7) {
+            resultText = '✅ Confiável';
+          } else if (oneDetected && result.confidence >= 0.5) {
+            resultText = '⚠️ Suspeito';
+          } else {
+            resultText = '🚨 Fraude';
+          }
+
+          toast.info(resultText);
+        } catch (analysisError) {
+          console.error('Analysis failed:', analysisError);
+          toast.error('Erro ao analisar imagem. Verifique a conexão.');
         }
 
-        toast.info(resultText);
         setIsAnalyzingVisual(null);
         return;
       }
@@ -519,11 +529,15 @@ const AdminDashboard = () => {
             userId: sub.user_id,
           });
 
-          // Save to audit
-          await saveAnalysisToAudit(result, {
-            taskId: sub.task_id,
-            userId: sub.user_id,
-          });
+          // Save to audit (ignore errors - table might not exist)
+          try {
+            await saveAnalysisToAudit(result, {
+              taskId: sub.task_id,
+              userId: sub.user_id,
+            });
+          } catch (auditError) {
+            console.warn('Could not save to audit log:', auditError);
+          }
 
           // Store result
           setVisualAnalysisResults(prev => ({
@@ -1940,6 +1954,21 @@ const AdminDashboard = () => {
                           </p>
                           <p className="text-[10px] mt-1 opacity-80">
                             {analysisResults[sub.id].details[0]}
+                          </p>
+                        </div>
+                      )}
+                      {/* YouTube Visual Analysis result display */}
+                      {visualAnalysisResults[sub.id] && (
+                        <div className={`text-xs p-2 rounded-lg mb-1 ${(visualAnalysisResults[sub.id].like_detected && visualAnalysisResults[sub.id].subscribe_detected && visualAnalysisResults[sub.id].confidence >= 0.7) ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                          (visualAnalysisResults[sub.id].like_detected || visualAnalysisResults[sub.id].subscribe_detected) && visualAnalysisResults[sub.id].confidence >= 0.5 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                            'bg-red-500/20 text-red-400 border border-red-500/30'
+                          }`}>
+                          <p className="font-bold">
+                            {(visualAnalysisResults[sub.id].like_detected && visualAnalysisResults[sub.id].subscribe_detected && visualAnalysisResults[sub.id].confidence >= 0.7) ? '✅ Like+Sub' :
+                              (visualAnalysisResults[sub.id].like_detected || visualAnalysisResults[sub.id].subscribe_detected) ? '⚠️ parcial' : '🚨 Não detectado'}
+                          </p>
+                          <p className="text-[10px] mt-1 opacity-80">
+                            Like: {visualAnalysisResults[sub.id].like_detected ? '✅' : '❌'} | Sub: {visualAnalysisResults[sub.id].subscribe_detected ? '✅' : '❌'} | Confiança: {Math.round(visualAnalysisResults[sub.id].confidence * 100)}%
                           </p>
                         </div>
                       )}
