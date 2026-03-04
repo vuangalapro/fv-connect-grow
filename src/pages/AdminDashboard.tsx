@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
+import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle, Loader2, RefreshCw, Youtube } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
+import { analyzeYouTubeScreenshot, saveAnalysisToAudit, VisualAnalysisResult } from '@/lib/youtubeVisualAnalysis';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
@@ -144,6 +145,8 @@ const AdminDashboard = () => {
     checkedFingerprints: string[];
   }>>({});
   const [analyzedTasks, setAnalyzedTasks] = useState<Set<string>>(new Set());
+  const [visualAnalysisResults, setVisualAnalysisResults] = useState<Record<string, VisualAnalysisResult>>({});
+  const [isAnalyzingVisual, setIsAnalyzingVisual] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Time series data for charts - registrations per day
@@ -165,12 +168,15 @@ const AdminDashboard = () => {
   useEffect(() => {
     if (panel === null && user?.is_admin) {
       const fetchOverviewData = async () => {
-        const { data: profiles } = await supabase.from('profiles').select('id, created_at').neq('is_admin', true);
-        const { data: w } = await supabase.from('withdrawals').select('*');
-        const { data: s } = await supabase.from('task_submissions').select('*');
-        const { data: t } = await supabase.from('tasks').select('id');
-        const { data: a } = await supabase.from('ads').select('*, created_at');
-        const { data: msgs } = await supabase.from('support_messages').select('*');
+        // Cache-busting: add timestamp to prevent stale data
+        const cacheBuster = Date.now();
+
+        const { data: profiles } = await supabase.from('profiles').select('id, created_at').neq('is_admin', true).abortSignal(new AbortController().signal);
+        const { data: w } = await supabase.from('withdrawals').select('*').abortSignal(new AbortController().signal);
+        const { data: s } = await supabase.from('task_submissions').select('*').abortSignal(new AbortController().signal);
+        const { data: t } = await supabase.from('tasks').select('id').abortSignal(new AbortController().signal);
+        const { data: a } = await supabase.from('ads').select('*, created_at').abortSignal(new AbortController().signal);
+        const { data: msgs } = await supabase.from('support_messages').select('*').abortSignal(new AbortController().signal);
 
         if (profiles) {
           setUsers(profiles);
@@ -320,7 +326,7 @@ const AdminDashboard = () => {
   // Anti-fraud analysis function - triggered on demand by admin
   const analyzeTask = async (sub: any) => {
     if (analyzingTaskId) return;
-    
+
     setAnalyzingTaskId(sub.id);
     const details: string[] = [];
     let riskScore = 0;
@@ -338,7 +344,7 @@ const AdminDashboard = () => {
         const ipMatches = allSubmissions.filter(
           s => s.ip_address === sub.ip_address && s.user_id !== sub.user_id
         );
-        
+
         if (ipMatches.length > 0) {
           riskScore += 30;
           details.push(`⚠️ IP duplicado: ${ipMatches.length} outra(s) submissão(ões) com mesmo IP`);
@@ -351,7 +357,7 @@ const AdminDashboard = () => {
         const fpMatches = allSubmissions.filter(
           s => s.device_fingerprint === sub.device_fingerprint && s.user_id !== sub.user_id
         );
-        
+
         if (fpMatches.length > 0) {
           riskScore += 50;
           details.push(`⚠️ Impressão de dispositivo duplicada: ${fpMatches.length} outra(s) submissão(ões)`);
@@ -373,7 +379,7 @@ const AdminDashboard = () => {
         const hoursDiff = (currentTime - subTime) / (1000 * 60 * 60);
         return hoursDiff >= 0 && hoursDiff <= 1 && s.id !== sub.id;
       });
-      
+
       if (recentSubmissions.length >= 3) {
         riskScore += 20;
         details.push(`⚠️ Múltiplas submissões em pouco tempo: ${recentSubmissions.length} nos últimos 60 minutos`);
@@ -395,7 +401,7 @@ const AdminDashboard = () => {
       const userFraudAlerts = allSubmissions?.filter(
         s => s.user_id === sub.user_id && s.fraud_alert === 'suspeita'
       ) || [];
-      
+
       if (userFraudAlerts.length > 0) {
         riskScore += 30;
         details.push(`⚠️ Utilizador com ${userFraudAlerts.length} alerta(s) de fraude anterior(es)`);
@@ -440,6 +446,115 @@ const AdminDashboard = () => {
       toast.error('Erro ao analisar tarefa');
     } finally {
       setAnalyzingTaskId(null);
+    }
+  };
+
+  // Visual analysis function - analyzes YouTube screenshot for like/subscribe detection
+  const analyzeYouTubeTask = async (sub: any) => {
+    if (isAnalyzingVisual) return;
+
+    if (!sub.screenshot_url) {
+      toast.error('Esta submissão não tem captura de ecrã para analisar');
+      return;
+    }
+
+    setIsAnalyzingVisual(sub.id);
+
+    try {
+      // Fetch the screenshot image
+      const { data: imageData, error: fetchError } = await supabase.storage
+        .from('screenshots')
+        .download(sub.screenshot_url);
+
+      if (fetchError || !imageData) {
+        // Try as public URL
+        const imageUrl = sub.screenshot_url.startsWith('http')
+          ? sub.screenshot_url
+          : `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/screenshots/${sub.screenshot_url}`;
+
+        // Analyze using the URL
+        const result = await analyzeYouTubeScreenshot(imageUrl, {
+          taskId: sub.task_id,
+          userId: sub.user_id,
+        });
+
+        // Save to audit
+        await saveAnalysisToAudit(result, {
+          taskId: sub.task_id,
+          userId: sub.user_id,
+        });
+
+        // Store result
+        setVisualAnalysisResults(prev => ({
+          ...prev,
+          [sub.id]: result,
+        }));
+
+        // Show result to admin - simplified
+        const bothDetected = result.like_detected && result.subscribe_detected;
+        const oneDetected = result.like_detected || result.subscribe_detected;
+
+        let resultText: string;
+        if (bothDetected && result.confidence >= 0.7) {
+          resultText = '✅ Confiável';
+        } else if (oneDetected && result.confidence >= 0.5) {
+          resultText = '⚠️ Suspeito';
+        } else {
+          resultText = '🚨 Fraude';
+        }
+
+        toast.info(resultText);
+      }
+
+      // Convert to base64
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const base64Image = reader.result as string;
+
+        const result = await analyzeYouTubeScreenshot(base64Image, {
+          taskId: sub.task_id,
+          userId: sub.user_id,
+        });
+
+        // Save to audit
+        await saveAnalysisToAudit(result, {
+          taskId: sub.task_id,
+          userId: sub.user_id,
+        });
+
+        // Store result
+        setVisualAnalysisResults(prev => ({
+          ...prev,
+          [sub.id]: result,
+        }));
+
+        // Show result to admin - simplified
+        const bothDetected = result.like_detected && result.subscribe_detected;
+        const oneDetected = result.like_detected || result.subscribe_detected;
+
+        let resultText: string;
+        if (bothDetected && result.confidence >= 0.7) {
+          resultText = '✅ Confiável';
+        } else if (oneDetected && result.confidence >= 0.5) {
+          resultText = '⚠️ Suspeito';
+        } else {
+          resultText = '🚨 Fraude';
+        }
+
+        toast.info(resultText);
+      };
+
+      reader.onerror = () => {
+        toast.error('Erro ao processar imagem');
+      };
+
+      reader.readAsDataURL(imageData);
+
+    } catch (error) {
+      console.error('Visual Analysis Error:', error);
+      toast.error('Erro ao analisar captura de ecrã');
+    } finally {
+      setIsAnalyzingVisual(null);
     }
   };
 
@@ -733,7 +848,10 @@ const AdminDashboard = () => {
       }
 
       // Clear the form after successful save
-      setTaskLinks(Array(taskCount).fill(''));
+      setTaskCount(1);
+      setTaskLinks(Array(1).fill(''));
+      setTaskTypes(Array(1).fill('video'));
+      setTaskRequiredTimes(Array(1).fill(90));
       toast.success('Tarefas guardadas com sucesso!');
       fetchData();
     } catch (error: any) {
@@ -1459,10 +1577,10 @@ const AdminDashboard = () => {
         )}
 
         {isLoading && (
-          <div className="flex items-center justify-center py-16" style={{opacity: 0, pointerEvents: 'none'}}>
+          <div className="flex items-center justify-center py-16" style={{ opacity: 0, pointerEvents: 'none' }}>
             <div className="text-center">
               <div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-              <p className="text-sm text-muted-foreground animate-pulse" style={{opacity: 0}}>A carregar dados...</p>
+              <p className="text-sm text-muted-foreground animate-pulse" style={{ opacity: 0 }}>A carregar dados...</p>
             </div>
           </div>
         )}
@@ -1763,7 +1881,7 @@ const AdminDashboard = () => {
             </div>
             <h2 className="text-2xl font-bold mb-6 font-display">Validar Tarefas ({submissions.filter(s => s.status === 'pending').length} pendentes)</h2>
             <div className="space-y-4">
-              {submissions.filter(sub => !processedTaskIds.current.includes(sub.id)).map(sub => (
+              {submissions.filter(sub => sub.status === 'pending' && !processedTaskIds.current.includes(sub.id)).map(sub => (
                 <div key={sub.id} className="glass rounded-2xl p-4">
                   <div className="flex items-start gap-4">
                     {sub.screenshot_url && (
@@ -1803,14 +1921,13 @@ const AdminDashboard = () => {
                     <div className="flex flex-col gap-2">
                       {/* Analysis result display */}
                       {analysisResults[sub.id] && (
-                        <div className={`text-xs p-2 rounded-lg mb-1 ${
-                          analysisResults[sub.id].result === 'confiavel' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                        <div className={`text-xs p-2 rounded-lg mb-1 ${analysisResults[sub.id].result === 'confiavel' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
                           analysisResults[sub.id].result === 'suspeito' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-                          'bg-red-500/20 text-red-400 border border-red-500/30'
-                        }`}>
+                            'bg-red-500/20 text-red-400 border border-red-500/30'
+                          }`}>
                           <p className="font-bold">
-                            {analysisResults[sub.id].result === 'confiavel' ? '✅ Confiável' : 
-                             analysisResults[sub.id].result === 'suspeito' ? '⚠️ Suspeito' : '🚨 Fraude'}
+                            {analysisResults[sub.id].result === 'confiavel' ? '✅ Confiável' :
+                              analysisResults[sub.id].result === 'suspeito' ? '⚠️ Suspeito' : '🚨 Fraude'}
                           </p>
                           <p className="text-[10px] mt-1 opacity-80">
                             {analysisResults[sub.id].details[0]}
@@ -1819,8 +1936,8 @@ const AdminDashboard = () => {
                       )}
                       <div className="flex gap-2">
                         {/* Analyze button */}
-                        <Button 
-                          size="sm" 
+                        <Button
+                          size="sm"
                           variant="outline"
                           onClick={() => analyzeTask(sub)}
                           disabled={analyzingTaskId === sub.id || analyzedTasks.has(sub.id)}
@@ -1833,6 +1950,25 @@ const AdminDashboard = () => {
                           ) : (
                             <>
                               <Search size={16} className="mr-1" /> Analisar
+                            </>
+                          )}
+                        </Button>
+                        {/* YouTube Visual Analysis Button */}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => analyzeYouTubeTask(sub)}
+                          disabled={isAnalyzingVisual === sub.id || !sub.screenshot_url}
+                          className={`border-red-500/50 hover:border-red-500 ${isAnalyzingVisual === sub.id ? 'opacity-50' : ''}`}
+                          title="Analisar visualmente Like e Subscrição"
+                        >
+                          {isAnalyzingVisual === sub.id ? (
+                            <Loader2 size={16} className="animate-spin text-red-400" />
+                          ) : visualAnalysisResults[sub.id] ? (
+                            <Check size={16} className="text-green-400" />
+                          ) : (
+                            <>
+                              <Youtube size={16} className="mr-1 text-red-400" /> YouTube
                             </>
                           )}
                         </Button>
@@ -2105,6 +2241,15 @@ const AdminDashboard = () => {
                       const newLinks = Array(taskCount).fill('');
                       taskLinks.forEach((link, i) => { if (i < taskCount) newLinks[i] = link; });
                       setTaskLinks(newLinks);
+
+                      const newTypes = Array(taskCount).fill('video');
+                      taskTypes.forEach((type, i) => { if (i < taskCount) newTypes[i] = type; });
+                      setTaskTypes(newTypes);
+
+                      const newTimes = Array(taskCount).fill(90);
+                      taskRequiredTimes.forEach((time, i) => { if (i < taskCount) newTimes[i] = time; });
+                      setTaskRequiredTimes(newTimes);
+
                       toast.info(`Campos ajustados para ${taskCount} tarefas.`);
                     }}>
                       Ajustar Campos
@@ -2142,23 +2287,21 @@ const AdminDashboard = () => {
                             <option value="link">Link Normal</option>
                           </select>
                         </div>
-                        {taskTypes[i] === 'video' && (
-                          <div className="flex-1">
-                            <label className="text-xs text-muted-foreground mb-1 block">Tempo (seg)</label>
-                            <Input
-                              type="number"
-                              min={30}
-                              max={600}
-                              value={taskRequiredTimes[i]}
-                              onChange={e => {
-                                const newTimes = [...taskRequiredTimes];
-                                newTimes[i] = parseInt(e.target.value) || 90;
-                                setTaskRequiredTimes(newTimes);
-                              }}
-                              className="bg-secondary/50"
-                            />
-                          </div>
-                        )}
+                        <div className="flex-1">
+                          <label className="text-xs text-muted-foreground mb-1 block">Tempo (seg)</label>
+                          <Input
+                            type="number"
+                            min={30}
+                            max={600}
+                            value={taskRequiredTimes[i] || 90}
+                            onChange={e => {
+                              const newTimes = [...taskRequiredTimes];
+                              newTimes[i] = parseInt(e.target.value) || 90;
+                              setTaskRequiredTimes(newTimes);
+                            }}
+                            className="bg-secondary/50"
+                          />
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -2241,7 +2384,7 @@ const AdminDashboard = () => {
             </div>
             <h2 className="text-2xl font-bold mb-6 font-display">Pedidos de Saque ({withdrawals.filter(w => w.status === 'pending').length} pendentes)</h2>
             <div className="space-y-4">
-              {withdrawals.map(w => (
+              {withdrawals.filter(w => w.status === 'pending').map(w => (
                 <div key={w.id} className="glass rounded-2xl p-4">
                   <div className="flex items-center justify-between">
                     <div>
@@ -2271,8 +2414,8 @@ const AdminDashboard = () => {
       {/* File Preview Modal */}
       {previewFile && (
         <div className="fixed inset-0 z-[99999] bg-black/90 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-4xl mx-auto my-4 glass rounded-2xl overflow-hidden animate-in zoom-in-95 max-h-[90vh] flex flex-col">
-            <div className="p-4 border-b border-border flex items-center justify-between bg-background/50">
+          <div className="w-full max-w-4xl mx-auto my-4 glass rounded-2xl overflow-hidden animate-in zoom-in-95 max-h-[95vh] flex flex-col">
+            <div className="p-4 border-b border-border flex items-center justify-between bg-background/50 shrink-0">
               <div className="flex items-center gap-4">
                 <h3 className="font-bold text-foreground truncate max-w-[70%]">{previewFile.title}</h3>
               </div>
@@ -2280,9 +2423,14 @@ const AdminDashboard = () => {
                 <ArrowLeft size={16} /> Voltar
               </Button>
             </div>
-            <div className="flex-1 bg-black/20 flex items-center justify-center overflow-auto p-4">
+            <div className="flex-1 bg-black/20 flex items-center justify-center p-4 overflow-auto">
               {previewFile.data.startsWith('data:image/') ? (
-                <img src={previewFile.data} alt="Preview" className="max-w-full max-h-full object-contain shadow-2xl" />
+                <img
+                  src={previewFile.data}
+                  alt="Preview"
+                  className="max-w-full h-auto max-h-none object-contain shadow-2xl rounded"
+                  style={{ maxHeight: 'none', width: 'auto', maxWidth: '100%' }}
+                />
               ) : (
                 <iframe src={previewFile.data} title="Document Preview" className="w-full h-full rounded-lg bg-white" />
               )}

@@ -96,6 +96,13 @@ const AffiliateDashboard = () => {
     return `${minutes}m`;
   };
 
+  // Check if a task is valid (not expired)
+  const isTaskValid = (expiresAt?: string) => {
+    if (!expiresAt) return true; // If no expiration, treat as valid
+    const expires = new Date(expiresAt).getTime();
+    return expires > Date.now();
+  };
+
   useEffect(() => {
     if (panel !== 'home') return;
     const timer = setInterval(() => setSlide(s => (s + 1) % slides.length), 3000);
@@ -483,8 +490,13 @@ const AffiliateDashboard = () => {
 
   if (!user) return null;
 
-  // Filter out completed (approved), pending and rejected tasks so they don't show in available tasks
-  const availableTasks = tasks.filter(t => !completedTasks.includes(t.id) && !pendingTasks.includes(t.id) && !rejectedTasks.includes(t.id));
+  // Filter out completed (approved), pending, rejected tasks AND expired tasks so they don't show in available tasks
+  const availableTasks = tasks.filter(t =>
+    isTaskValid(t.expires_at) &&
+    !completedTasks.includes(t.id) &&
+    !pendingTasks.includes(t.id) &&
+    !rejectedTasks.includes(t.id)
+  );
 
   return (
     <div className="min-h-screen flex flex-col md:flex-row !overflow-visible">
@@ -507,12 +519,12 @@ const AffiliateDashboard = () => {
           {menuItems.map(item => (
             <button
               key={item.id}
-              onClick={() => { 
+              onClick={() => {
                 if (item.id === 'home') {
                   showRulesOnDemand();
                 }
-                setPanel(item.id); 
-                setMobileMenu(false); 
+                setPanel(item.id);
+                setMobileMenu(false);
               }}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${panel === item.id ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
                 }`}
@@ -551,12 +563,12 @@ const AffiliateDashboard = () => {
         {menuItems.map(item => (
           <button
             key={item.id}
-            onClick={() => { 
+            onClick={() => {
               if (item.id === 'home') {
                 showRulesOnDemand();
               }
-              setPanel(item.id); 
-              setMobileMenu(false); 
+              setPanel(item.id);
+              setMobileMenu(false);
             }}
             className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all ${panel === item.id ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
               }`}
@@ -573,10 +585,10 @@ const AffiliateDashboard = () => {
       {/* Main Content */}
       <div className="flex-1 p-4 md:p-8 !overflow-visible relative md:pt-4 pt-16">
         {isLoadingData && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-sm rounded-xl" style={{opacity: 0, pointerEvents: 'none'}}>
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-sm rounded-xl" style={{ opacity: 0, pointerEvents: 'none' }}>
             <div className="text-center">
               <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-              <p className="text-sm text-muted-foreground animate-pulse" style={{opacity: 0}}>A carregar dados...</p>
+              <p className="text-sm text-muted-foreground animate-pulse" style={{ opacity: 0 }}>A carregar dados...</p>
             </div>
           </div>
         )}
@@ -607,7 +619,7 @@ const AffiliateDashboard = () => {
                 ))}
               </div>
             </div>
-            
+
             {/* Progress Bars - Penalty Credit & Tasks */}
             <div className="mt-8 space-y-6">
               {/* Penalty Credit Progress Bar */}
@@ -622,7 +634,7 @@ const AffiliateDashboard = () => {
                   </span>
                 </div>
                 <div className="h-3 bg-muted rounded-full overflow-hidden">
-                  <div 
+                  <div
                     className={`h-full transition-all ${profile.penaltyCredit <= 20 ? 'bg-red-500' : profile.penaltyCredit <= 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
                     style={{ width: `${Math.max(0, profile.penaltyCredit)}%` }}
                   />
@@ -644,7 +656,7 @@ const AffiliateDashboard = () => {
                   </span>
                 </div>
                 <div className="h-3 bg-muted rounded-full overflow-hidden">
-                  <div 
+                  <div
                     className="h-full bg-primary transition-all"
                     style={{ width: `${tasks.length > 0 ? (completedTasks.length / tasks.length) * 100 : 0}%` }}
                   />
@@ -1017,7 +1029,7 @@ const AffiliateDashboard = () => {
                           </span>
                         </div>
                         <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                          <div 
+                          <div
                             className={`h-full transition-all ${profile.penaltyCredit <= 20 ? 'bg-red-500' : profile.penaltyCredit <= 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
                             style={{ width: `${Math.max(0, profile.penaltyCredit)}%` }}
                           />

@@ -252,6 +252,7 @@ export default function VideoTaskPlayer({
   const [deviceFingerprint, setDeviceFingerprint] = useState<string>('');
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [isVideoCompleted, setIsVideoCompleted] = useState(false);
+  const [hasOpenedYouTube, setHasOpenedYouTube] = useState(false);
 
   const videoId = extractVideoId(videoUrl);
 
@@ -279,7 +280,7 @@ export default function VideoTaskPlayer({
       const parsed = completed ? JSON.parse(completed) : {};
       parsed[taskId] = true;
       localStorage.setItem(getCompletedVideosKey(userId), JSON.stringify(parsed));
-      
+
       // Save watch time
       localStorage.setItem(getWatchTimeKey(userId, taskId), String(watchedTime));
     } catch (e) {
@@ -300,26 +301,32 @@ export default function VideoTaskPlayer({
   // Check if already completed video
   useEffect(() => {
     if (isVideoCompletedInSession()) {
-      setCanSubmit(true);
       setIsVideoCompleted(true);
     }
   }, [isVideoCompletedInSession]);
+
+  // Effect to set canSubmit only when BOTH video is completed AND YouTube was opened
+  useEffect(() => {
+    if (isVideoCompleted && hasOpenedYouTube) {
+      setCanSubmit(true);
+    }
+  }, [isVideoCompleted, hasOpenedYouTube]);
 
   useEffect(() => {
     if (isOpen && taskId && userId) {
       // Check if there's a saved time for this task
       const savedTime = localStorage.getItem(getWatchTimeKey(userId, taskId));
-      
+
       // If video was already completed, use saved time
       if (savedTime) {
         setWatchedTime(parseInt(savedTime, 10));
-        setCanSubmit(true);
         setIsVideoCompleted(true);
       } else {
         setWatchedTime(0);
         setCanSubmit(false);
         setIsVideoCompleted(false);
       }
+      setHasOpenedYouTube(false); // Reset YouTube opened state when task is opened
 
       generateDeviceFingerprint().then(fp => {
         setDeviceFingerprint(fp);
@@ -352,10 +359,10 @@ export default function VideoTaskPlayer({
     }
     lastTimeRef.current = seconds;
 
-    if (seconds >= requiredTime && !canSubmit) {
-      setCanSubmit(true);
+    if (seconds >= requiredTime && !isVideoCompleted) {
+      setIsVideoCompleted(true);
       markVideoCompleted();
-      onReadyToSubmit?.();
+      toast.info('Vídeo assistido! Agora abra o vídeo no YouTube para habilitar o envio.');
     }
     onTimeUpdate?.(seconds);
   }, [requiredTime, canSubmit, onReadyToSubmit, onTimeUpdate, markVideoCompleted]);
@@ -363,11 +370,8 @@ export default function VideoTaskPlayer({
   const handleVideoComplete = useCallback(() => {
     setIsVideoCompleted(true);
     markVideoCompleted();
-    if (!canSubmit) {
-      setCanSubmit(true);
-      toast.success('Vídeo assistido! Tempo limite atingido. Agora você pode abrir no YouTube e comentar.');
-    }
-  }, [canSubmit, markVideoCompleted]);
+    toast.info('Vídeo assistido! Agora abra o vídeo no YouTube para habilitar o envio.');
+  }, [markVideoCompleted]);
 
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -410,8 +414,8 @@ export default function VideoTaskPlayer({
             totalPauses,
             maxContinuousWatch,
           },
-         ocrResult: null,
-         fraudAlert: null,
+          ocrResult: null,
+          fraudAlert: null,
         };
 
         if (onSubmit) {
@@ -519,7 +523,7 @@ export default function VideoTaskPlayer({
                   <ol className="text-xs sm:text-sm text-muted-foreground space-y-2">
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">1</span>
-                      <span>Assista o vídeo completo (mínimo {Math.floor(requiredTime/60)}m{requiredTime%60}s)</span>
+                      <span>Assista o vídeo completo (mínimo {Math.floor(requiredTime / 60)}m{requiredTime % 60}s)</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">2</span>
@@ -542,6 +546,7 @@ export default function VideoTaskPlayer({
                     variant="outline"
                     className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/10"
                     onClick={() => {
+                      setHasOpenedYouTube(true);
                       window.open(videoUrl, '_blank');
                     }}
                   >
@@ -551,8 +556,8 @@ export default function VideoTaskPlayer({
 
                   <div className="flex-1">
                     <label className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg cursor-pointer transition-colors font-medium ${canSubmit
-                        ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30'
-                        : 'bg-muted text-muted-foreground cursor-not-allowed border border-muted'
+                      ? 'bg-green-600/20 text-green-400 hover:bg-green-600/30 border border-green-500/30'
+                      : 'bg-muted text-muted-foreground cursor-not-allowed border border-muted'
                       }`}>
                       <input
                         type="file"
@@ -571,7 +576,13 @@ export default function VideoTaskPlayer({
                 {canSubmit && !selectedFile && (
                   <p className="text-xs text-center text-green-400 bg-green-500/10 p-2 rounded flex items-center justify-center gap-2">
                     <Check size={14} />
-                    Vídeo assistido! Você pode enviar a prova
+                    Tudo pronto! Você pode enviar a prova
+                  </p>
+                )}
+                {isVideoCompleted && !hasOpenedYouTube && !selectedFile && (
+                  <p className="text-xs text-center text-yellow-400 bg-yellow-500/10 p-2 rounded flex items-center justify-center gap-2">
+                    <Check size={14} />
+                    Vídeo assistido! Clique em "Abrir YouTube" para habilitar o envio
                   </p>
                 )}
               </div>
