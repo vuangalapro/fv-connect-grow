@@ -125,7 +125,7 @@ const AffiliateLogin = () => {
             <h1 className="text-4xl font-bold mb-3 font-display tracking-tight">
               <span className="text-gradient-primary">Fv-Comércio</span>
             </h1>
-            <p className="text-muted-foreground">Portal do Afiliado Digital</p>
+            <p className="text-muted-foreground">Iniciar sessão</p>
           </div>
 
           <div className="flex rounded-2xl bg-secondary/50 p-1.5 mb-8 border border-white/5">
