@@ -514,24 +514,20 @@ export default function VideoTaskPlayer({
                 {/* Instructions */}
                 <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
                   <p className="text-sm text-blue-300 font-bold mb-3 flex items-center gap-2">
-                    📋 O que fazer no YouTube:
+                    📋 Como completar a tarefa:
                   </p>
                   <ol className="text-xs sm:text-sm text-muted-foreground space-y-2">
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">1</span>
-                      <span>Clique em <strong>"Abrir no YouTube"</strong> abaixo</span>
+                      <span>Assista o vídeo completo (mínimo {Math.floor(requiredTime/60)}m{requiredTime%60}s)</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">2</span>
-                      <span>Curta o vídeo e <strong>inscreva-se no canal</strong></span>
+                      <span>Tire <strong>screenshot</strong> do vídeo como prova</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">3</span>
-                      <span>Tire <strong>screenshot do vídeo</strong> com seu like e inscrição</span>
-                    </li>
-                    <li className="flex items-start gap-2">
-                      <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">4</span>
-                      <span>Volte aqui e <strong>envie a captura</strong></span>
+                      <span>Envie a captura abaixo</span>
                     </li>
                   </ol>
                 </div>
@@ -560,7 +556,7 @@ export default function VideoTaskPlayer({
                         disabled={!canSubmit}
                       />
                       <Upload size={18} />
-                      {selectedFile ? selectedFile.name : '📸 Enviar captura do comentário'}
+                      {selectedFile ? selectedFile.name : '📸 Enviar captura'}
                     </label>
                   </div>
                 </div>

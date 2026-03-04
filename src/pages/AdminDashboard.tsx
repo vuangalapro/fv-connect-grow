@@ -1565,80 +1565,11 @@ const AdminDashboard = () => {
                       <p className="text-sm text-muted-foreground">ID Tarefa: {sub.task_id}</p>
                       <p className="text-xs text-muted-foreground">{new Date(sub.created_at).toLocaleString()}</p>
 
-                      {/* Fraud Detection Info - Only show for video tasks */}
-                      {(sub.tasks?.task_type === 'video' || sub.unique_comment_code) && (
-                        <div className="mt-2 p-2 bg-muted/50 rounded-lg">
-                          {/* OCR Processing Indicator */}
-                          {processingOCR[sub.id] && (
-                            <div className="flex items-center gap-2 text-blue-400 text-xs mb-2">
-                              <Loader2 size={12} className="animate-spin" />
-                              Analisando captura...
-                            </div>
-                          )}
-
-                          {/* Code comparison */}
-                          {sub.unique_comment_code && (
-                            <p className="text-xs text-muted-foreground mb-1">
-                              <span className="font-medium">Código esperado:</span> {sub.unique_comment_code}
-                            </p>
-                          )}
-                          {sub.ocr_extracted_code && (
-                            <p className="text-xs text-muted-foreground mb-1">
-                              <span className="font-medium">Código detectado:</span>{' '}
-                              <span className={sub.fraudAlert === 'confiavel' ? 'text-green-400 font-mono' : 'text-red-400 font-mono'}>
-                                {sub.ocr_extracted_code}
-                              </span>
-                            </p>
-                          )}
-
-                          {/* Risk Score */}
-                          {sub.risk_score > 0 && (
-                            <div className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${sub.risk_score >= 70 ? 'bg-red-500/20 text-red-400' :
-                              sub.risk_score >= 40 ? 'bg-yellow-500/20 text-yellow-400' :
-                                'bg-green-500/20 text-green-400'
-                              }`}>
-                              <AlertTriangle size={12} />
-                              Risco: {sub.risk_score}%
-                            </div>
-                          )}
-
-                          {/* Fraud Alert Status */}
-                          {sub.fraud_alert && (
-                            <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ml-2 ${sub.fraud_alert === 'suspeita' ? 'bg-red-500/20 text-red-400' :
-                              'bg-green-500/20 text-green-400'
-                              }`}>
-                              {sub.fraud_alert === 'suspeita' ? '🔴 SUSPEITA' : '🟢 CONFIÁVEL'}
-                            </span>
-                          )}
-
-                          {/* Watch Time */}
-                          {sub.watched_time && (
-                            <p className="text-xs text-muted-foreground mt-1">
-                              ⏱ Tempo assistido: {Math.floor(sub.watched_time / 60)}:{(sub.watched_time % 60).toString().padStart(2, '0')}
-                            </p>
-                          )}
-
-                          {/* Unique Code */}
-                          {sub.unique_comment_code && (
-                            <p className="text-xs mt-1">
-                              <span className="text-muted-foreground">Código:</span>{' '}
-                              <span className="font-mono text-purple-400">{sub.unique_comment_code}</span>
-                            </p>
-                          )}
-
-                          {/* OCR Extracted Code */}
-                          {sub.ocr_extracted_code && (
-                            <p className="text-xs mt-1">
-                              <span className="text-muted-foreground">OCR detectado:</span>{' '}
-                              <span className="font-mono">{sub.ocr_extracted_code}</span>
-                              {sub.ocr_confidence && (
-                                <span className="text-muted-foreground ml-1">
-                                  ({(sub.ocr_confidence * 100).toFixed(0)}%)
-                                </span>
-                              )}
-                            </p>
-                          )}
-                        </div>
+                      {/* Simple info - only show watch time */}
+                      {sub.watched_time && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          ⏱ Tempo assistido: {Math.floor(sub.watched_time / 60)}:{(sub.watched_time % 60).toString().padStart(2, '0')}
+                        </p>
                       )}
                     </div>
                     <div className="flex gap-2">
@@ -2016,23 +1947,11 @@ const AdminDashboard = () => {
             <div className="p-4 border-b border-border flex items-center justify-between bg-background/50">
               <div className="flex items-center gap-4">
                 <h3 className="font-bold text-foreground truncate max-w-[70%]">{previewFile.title}</h3>
-                {previewFile.fraudAlert && (
-                  <span className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium ${previewFile.fraudAlert === 'suspeita' ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
-                    {previewFile.fraudAlert === 'suspeita' ? '🔴 SUSPEITA' : '🟢 CONFIÁVEL'}
-                  </span>
-                )}
               </div>
               <Button variant="outline" size="sm" onClick={() => setPreviewFile(null)} className="gap-2">
                 <ArrowLeft size={16} /> Voltar
               </Button>
             </div>
-            {previewFile.extractedCode && (
-              <div className="px-4 py-2 bg-purple-500/10 border-b border-purple-500/30">
-                <p className="text-sm text-purple-300">
-                  <span className="font-semibold">Código encontrado:</span> {previewFile.extractedCode}
-                </p>
-              </div>
-            )}
             <div className="flex-1 bg-black/20 flex items-center justify-center overflow-auto p-4">
               {previewFile.data.startsWith('data:image/') ? (
                 <img src={previewFile.data} alt="Preview" className="max-w-full max-h-full object-contain shadow-2xl" />
