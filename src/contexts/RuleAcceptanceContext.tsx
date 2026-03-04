@@ -130,41 +130,8 @@ export function RuleAcceptanceProvider({ children }: { children: ReactNode }) {
     init();
   }, [user]);
 
-  // Re-check on dashboard/page access
-  useEffect(() => {
-    const recheckOnDashboard = async () => {
-      // Don't recheck for admins
-      if (user && accepted && !isAdmin) {
-        // Recheck if rules need to be accepted (in case of 7-day expiry)
-        const needsAcceptance = await checkRulesAcceptance(user.id);
-        if (needsAcceptance) {
-          setShowRulesModal(true);
-          setAccepted(false);
-        }
-      }
-    };
-
-    // Check on page visibility change (when user returns to dashboard)
-    const handleVisibilityChange = () => {
-      if (!document.hidden && user && !isAdmin) {
-        recheckOnDashboard();
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    
-    // Check periodically (every 30 seconds when on dashboard)
-    const interval = setInterval(() => {
-      if (user && accepted && !isAdmin) {
-        recheckOnDashboard();
-      }
-    }, 30000);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-      clearInterval(interval);
-    };
-  }, [user, accepted]);
+  // Only check once on initial user load
+  // Removed periodic rechecks and visibility changes that caused popup to appear repeatedly
 
   // Function to show rules modal on demand (for "Início" button)
   // This must be defined outside useEffect so it's available immediately
