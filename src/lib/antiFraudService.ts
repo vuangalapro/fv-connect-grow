@@ -353,9 +353,9 @@ export async function getAllAffiliatesFraudAnalysis(): Promise<any[]> {
  * Determine fraud status based on score
  */
 export function getFraudStatus(score: number): 'confiavel' | 'suspeito' | 'alto_risco' {
-    if (score >= 80) return 'confiavel';
+    if (score >= 80) return 'alto_risco';
     if (score >= 50) return 'suspeito';
-    return 'alto_risco';
+    return 'confiavel';
 }
 
 /**
