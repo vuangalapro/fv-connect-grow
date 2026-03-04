@@ -583,7 +583,6 @@ const AffiliateDashboard = () => {
         {/* HOME - Slider */}
         {panel === 'home' && (
           <div>
-            <h2 className="text-2xl font-bold mb-6 font-display">Publicidades em Destaque</h2>
             <div className="relative rounded-2xl overflow-hidden h-64 md:h-96 lg:h-[400px]">
               {slides.map((s, i) => (
                 <div
@@ -1005,7 +1004,7 @@ const AffiliateDashboard = () => {
                         <AlertTriangle className={profile.penaltyCredit <= 20 ? 'text-red-400' : profile.penaltyCredit <= 50 ? 'text-yellow-400' : 'text-green-400'} size={20} />
                       </div>
                       <div>
-                        <h3 className="text-lg font-semibold">Créditos de Penalty</h3>
+                        <h3 className="text-lg font-semibold">Créditos de Penalidades</h3>
                         <p className="text-xs text-muted-foreground">Sistema antifraude</p>
                       </div>
                     </div>
