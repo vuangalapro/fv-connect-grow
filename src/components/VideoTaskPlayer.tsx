@@ -537,10 +537,12 @@ export default function VideoTaskPlayer({
                   <Button
                     variant="outline"
                     className="flex-1 border-red-500/50 text-red-400 hover:bg-red-500/10"
-                    onClick={() => window.open(videoUrl, '_blank')}
+                    onClick={() => {
+                      window.open(videoUrl, '_blank');
+                    }}
                   >
                     <ExternalLink size={18} className="mr-2" />
-                    Abrir no YouTube
+                    Abrir YouTube (Curtir & Inscrever)
                   </Button>
 
                   <div className="flex-1">
@@ -590,7 +592,7 @@ export default function VideoTaskPlayer({
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-2 sm:p-4 bg-black/70 backdrop-blur-sm overflow-y-auto">
           <div className="glass rounded-2xl p-4 sm:p-6 w-full max-w-sm mx-auto my-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold">Enviando...</h3>
+              <h3 className="text-lg font-bold">Confirmar envio da prova</h3>
             </div>
 
             <img
@@ -599,8 +601,27 @@ export default function VideoTaskPlayer({
               className="w-full rounded-lg mb-4 max-h-64 object-contain bg-black"
             />
 
-            <div className="flex justify-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                className="flex-1"
+                onClick={() => {
+                  setShowUpload(false);
+                  setSelectedFile(null);
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                className="flex-1 bg-green-600 hover:bg-green-700"
+                onClick={handleSubmit}
+                disabled={isUploading}
+              >
+                {isUploading ? (
+                  <Loader2 className="animate-spin mr-2" size={18} />
+                ) : null}
+                Confirmar
+              </Button>
             </div>
           </div>
         </div>,
