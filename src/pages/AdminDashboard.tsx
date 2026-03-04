@@ -134,6 +134,17 @@ const AdminDashboard = () => {
   const [replyText, setReplyText] = useState('');
   const unreadMessagesCount = supportMessages.filter(m => !m.is_read).length;
 
+  // Anti-fraud analysis state
+  const [analyzingTaskId, setAnalyzingTaskId] = useState<string | null>(null);
+  const [analysisResults, setAnalysisResults] = useState<Record<string, {
+    riskScore: number;
+    result: 'confiavel' | 'suspeito' | 'fraude';
+    details: string[];
+    checkedIPs: string[];
+    checkedFingerprints: string[];
+  }>>({});
+  const [analyzedTasks, setAnalyzedTasks] = useState<Set<string>>(new Set());
+
   // Time series data for charts - registrations per day
   const [userRegistrations, setUserRegistrations] = useState<{ date: string; count: number }[]>([]);
   const [taskRegistrations, setTaskRegistrations] = useState<{ date: string; count: number }[]>([]);
@@ -302,6 +313,132 @@ const AdminDashboard = () => {
 
   // NOTE: OCR processing is now disabled - admin reviews tasks manually
 
+  // Anti-fraud analysis function - triggered on demand by admin
+  const analyzeTask = async (sub: any) => {
+    if (analyzingTaskId) return;
+    
+    setAnalyzingTaskId(sub.id);
+    const details: string[] = [];
+    let riskScore = 0;
+    const checkedIPs: string[] = [];
+    const checkedFingerprints: string[] = [];
+
+    try {
+      // 1. Check IP duplication - fetch all submissions to compare IPs
+      const { data: allSubmissions } = await supabase
+        .from('task_submissions')
+        .select('id, user_id, ip_address, device_fingerprint, created_at, task_id, fraud_alert, watched_time, screenshot_url');
+
+      if (allSubmissions && sub.ip_address) {
+        // Check if this IP was used by other users
+        const ipMatches = allSubmissions.filter(
+          s => s.ip_address === sub.ip_address && s.user_id !== sub.user_id
+        );
+        
+        if (ipMatches.length > 0) {
+          riskScore += 30;
+          details.push(`⚠️ IP duplicado: ${ipMatches.length} outra(s) submissão(ões) com mesmo IP`);
+          checkedIPs.push(sub.ip_address);
+        }
+      }
+
+      // 2. Check device fingerprint duplication
+      if (allSubmissions && sub.device_fingerprint) {
+        const fpMatches = allSubmissions.filter(
+          s => s.device_fingerprint === sub.device_fingerprint && s.user_id !== sub.user_id
+        );
+        
+        if (fpMatches.length > 0) {
+          riskScore += 50;
+          details.push(`⚠️ Impressão de dispositivo duplicada: ${fpMatches.length} outra(s) submissão(ões)`);
+          checkedFingerprints.push(sub.device_fingerprint);
+        }
+      }
+
+      // 3. Check user history - how many submissions has this user made?
+      const userSubmissions = allSubmissions?.filter(s => s.user_id === sub.user_id) || [];
+      if (userSubmissions.length > 10) {
+        riskScore += 10;
+        details.push(`ℹ️ Utilizador com ${userSubmissions.length} submissões no total`);
+      }
+
+      // 4. Check for rapid submissions (same user, multiple tasks in short time)
+      const recentSubmissions = userSubmissions.filter(s => {
+        const subTime = new Date(s.created_at).getTime();
+        const currentTime = new Date(sub.created_at).getTime();
+        const hoursDiff = (currentTime - subTime) / (1000 * 60 * 60);
+        return hoursDiff >= 0 && hoursDiff <= 1 && s.id !== sub.id;
+      });
+      
+      if (recentSubmissions.length >= 3) {
+        riskScore += 20;
+        details.push(`⚠️ Múltiplas submissões em pouco tempo: ${recentSubmissions.length} nos últimos 60 minutos`);
+      }
+
+      // 5. Check watch time - was the video watched long enough?
+      if (sub.watched_time && sub.watched_time < 60) {
+        riskScore += 25;
+        details.push(`⚠️ Tempo de visualização baixo: ${Math.floor(sub.watched_time)}s (mín: 60s)`);
+      }
+
+      // 6. Check if screenshot was uploaded
+      if (!sub.screenshot_url) {
+        riskScore += 15;
+        details.push(`⚠️ Sem captura de ecrã carregada`);
+      }
+
+      // 7. Check for existing fraud alerts on user's submissions
+      const userFraudAlerts = allSubmissions?.filter(
+        s => s.user_id === sub.user_id && s.fraud_alert === 'suspeita'
+      ) || [];
+      
+      if (userFraudAlerts.length > 0) {
+        riskScore += 30;
+        details.push(`⚠️ Utilizador com ${userFraudAlerts.length} alerta(s) de fraude anterior(es)`);
+      }
+
+      // Determine result based on risk score
+      let result: 'confiavel' | 'suspeito' | 'fraude';
+      if (riskScore >= 70) {
+        result = 'fraude';
+        details.unshift(`🚨 RISCO ALTO: ${riskScore} pontos`);
+      } else if (riskScore >= 30) {
+        result = 'suspeito';
+        details.unshift(`⚠️ RISCO MÉDIO: ${riskScore} pontos`);
+      } else {
+        result = 'confiavel';
+        details.unshift(`✅ RISCO BAIXO: ${riskScore} pontos`);
+      }
+
+      // If no issues found
+      if (details.length === 1) {
+        details.push('✅ Nenhum padrão suspeito detetado');
+      }
+
+      // Save analysis result
+      setAnalysisResults(prev => ({
+        ...prev,
+        [sub.id]: { riskScore, result, details, checkedIPs, checkedFingerprints }
+      }));
+
+      // Mark task as analyzed
+      setAnalyzedTasks(prev => new Set([...prev, sub.id]));
+
+      // Update fraud_alert in database
+      await supabase
+        .from('task_submissions')
+        .update({ fraud_alert: result })
+        .eq('id', sub.id);
+
+      toast.info(`Análise concluída: ${result === 'confiavel' ? '✅ Confiável' : result === 'suspeito' ? '⚠️ Suspeito' : '🚨 Fraude'}`);
+    } catch (error) {
+      console.error('Error analyzing task:', error);
+      toast.error('Erro ao analisar tarefa');
+    } finally {
+      setAnalyzingTaskId(null);
+    }
+  };
+
   const approveTask = async (sub: any) => {
     try {
       // 1. Update submission status with validation info
@@ -410,6 +547,25 @@ const AdminDashboard = () => {
         .eq('id', sub.id);
 
       if (error) throw error;
+
+      // Deduct 5 penalty credits from the user
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('penalty_credit')
+        .eq('id', sub.user_id)
+        .single();
+
+      const currentPenaltyCredit = userProfile?.penalty_credit || 100;
+      const newPenaltyCredit = Math.max(0, currentPenaltyCredit - 5);
+
+      await supabase
+        .from('profiles')
+        .update({ penalty_credit: newPenaltyCredit })
+        .eq('id', sub.user_id);
+
+      // Also mark as analyzed/evaluated
+      setAnalyzedTasks(prev => new Set([...prev, sub.id]));
+      processedTaskIds.current.push(sub.id);
 
       setSubmissions(prev => prev.filter(s => s.id !== sub.id));
 
@@ -683,7 +839,8 @@ const AdminDashboard = () => {
           bank_name: selectedUser.bank_name,
           bank_account: selectedUser.bank_account,
           gender: selectedUser.gender,
-          balance: parseFloat(selectedUser.balance || 0)
+          balance: parseFloat(selectedUser.balance || 0),
+          penalty_credit: parseInt(selectedUser.penalty_credit || 100)
         })
         .eq('id', selectedUser.id);
 
@@ -1452,6 +1609,15 @@ const AdminDashboard = () => {
                         className="bg-secondary/30 h-8 font-bold text-primary"
                       />
                     </div>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-xs font-bold whitespace-nowrap text-yellow-500">Créditos Penalidade:</span>
+                      <Input
+                        type="number"
+                        value={selectedUser.penalty_credit || 100}
+                        onChange={e => setSelectedUser({ ...selectedUser, penalty_credit: parseInt(e.target.value) || 0 })}
+                        className="bg-secondary/30 h-8 font-bold text-yellow-500 w-20"
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="bg-secondary/20 p-4 rounded-xl space-y-2">
@@ -1535,7 +1701,7 @@ const AdminDashboard = () => {
             </button>
             <h2 className="text-2xl font-bold mb-6 font-display">Validar Tarefas ({submissions.filter(s => s.status === 'pending').length} pendentes)</h2>
             <div className="space-y-4">
-              {submissions.filter(sub => !processedTaskIds.current.includes(sub.id)).map(sub => (
+              {submissions.filter(sub => !processedTaskIds.current.includes(sub.id) && !analyzedTasks.has(sub.id)).map(sub => (
                 <div key={sub.id} className="glass rounded-2xl p-4">
                   <div className="flex items-start gap-4">
                     {sub.screenshot_url && (
@@ -1572,13 +1738,49 @@ const AdminDashboard = () => {
                         </p>
                       )}
                     </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={() => approveTask(sub)} className="bg-green-600 hover:bg-green-700">
-                        <Check size={16} />
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => rejectTask(sub)}>
-                        <X size={16} />
-                      </Button>
+                    <div className="flex flex-col gap-2">
+                      {/* Analysis result display */}
+                      {analysisResults[sub.id] && (
+                        <div className={`text-xs p-2 rounded-lg mb-1 ${
+                          analysisResults[sub.id].result === 'confiavel' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                          analysisResults[sub.id].result === 'suspeito' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                          'bg-red-500/20 text-red-400 border border-red-500/30'
+                        }`}>
+                          <p className="font-bold">
+                            {analysisResults[sub.id].result === 'confiavel' ? '✅ Confiável' : 
+                             analysisResults[sub.id].result === 'suspeito' ? '⚠️ Suspeito' : '🚨 Fraude'}
+                          </p>
+                          <p className="text-[10px] mt-1 opacity-80">
+                            {analysisResults[sub.id].details[0]}
+                          </p>
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        {/* Analyze button */}
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => analyzeTask(sub)}
+                          disabled={analyzingTaskId === sub.id || analyzedTasks.has(sub.id)}
+                          className={`border-primary/50 hover:border-primary ${analyzedTasks.has(sub.id) ? 'opacity-50' : ''}`}
+                        >
+                          {analyzingTaskId === sub.id ? (
+                            <Loader2 size={16} className="animate-spin" />
+                          ) : analyzedTasks.has(sub.id) ? (
+                            <Check size={16} className="text-green-400" />
+                          ) : (
+                            <>
+                              <Search size={16} className="mr-1" /> Analisar
+                            </>
+                          )}
+                        </Button>
+                        <Button size="sm" onClick={() => approveTask(sub)} className="bg-green-600 hover:bg-green-700">
+                          <Check size={16} />
+                        </Button>
+                        <Button size="sm" variant="destructive" onClick={() => rejectTask(sub)}>
+                          <X size={16} />
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 </div>
