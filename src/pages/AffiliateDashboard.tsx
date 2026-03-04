@@ -233,7 +233,7 @@ const AffiliateDashboard = () => {
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
           <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-muted-foreground animate-pulse font-medium">A carregar o seu painel...</p>
+          <p className="text-muted-foreground animate-pulse font-medium" style={{opacity: 0}}>A carregar o seu painel...</p>
         </div>
       </div>
     );
@@ -559,10 +559,10 @@ const AffiliateDashboard = () => {
       {/* Main Content */}
       <div className="flex-1 p-4 md:p-8 !overflow-visible relative md:pt-4 pt-16">
         {isLoadingData && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-sm rounded-xl">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60 backdrop-blur-sm rounded-xl" style={{opacity: 0, pointerEvents: 'none'}}>
             <div className="text-center">
               <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-              <p className="text-sm text-muted-foreground animate-pulse">A carregar dados...</p>
+              <p className="text-sm text-muted-foreground animate-pulse" style={{opacity: 0}}>A carregar dados...</p>
             </div>
           </div>
         )}

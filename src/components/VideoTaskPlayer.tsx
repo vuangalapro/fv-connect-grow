@@ -523,10 +523,14 @@ export default function VideoTaskPlayer({
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">2</span>
-                      <span>Tire <strong>screenshot</strong> do vídeo como prova</span>
+                      <span>Abra o vídeo no YouTube, <strong>curta</strong> e <strong>inscreva-se</strong> no canal</span>
                     </li>
                     <li className="flex items-start gap-2">
                       <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">3</span>
+                      <span>Tire <strong>screenshot</strong> do vídeo como prova</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="bg-blue-500/20 text-blue-400 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 text-xs">4</span>
                       <span>Envie a captura abaixo</span>
                     </li>
                   </ol>
