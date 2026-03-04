@@ -838,6 +838,12 @@ const AdminDashboard = () => {
 
   const deleteTask = async (taskId: string) => {
     try {
+      // First delete related records in order (respecting foreign keys)
+      await supabase.from('visual_analysis_audit').delete().eq('task_id', taskId);
+      await supabase.from('video_clicks').delete().eq('task_id', taskId);
+      await supabase.from('task_submissions').delete().eq('task_id', taskId);
+      
+      // Then delete the task
       const { error } = await supabase.from('tasks').delete().eq('id', taskId);
       if (error) throw error;
       setExistingTasks(prev => prev.filter(t => t.id !== taskId));
