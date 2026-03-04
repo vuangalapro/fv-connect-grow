@@ -889,7 +889,7 @@ const AdminDashboard = () => {
           >
             <Home className="text-accent" size={24} />
             <div>
-              <h2 className="text-lg font-bold text-gradient-accent font-display">Painel Admin</h2>
+              <h2 className="text-lg font-bold text-gradient-accent font-display">Painel</h2>
               <p className="text-xs text-muted-foreground">Bem-Vindo Administrador</p>
             </div>
           </button>
@@ -897,7 +897,7 @@ const AdminDashboard = () => {
 
         {/* Mobile Header */}
         <div className="md:hidden flex items-center justify-between w-full mb-4">
-          <h2 className="text-sm font-bold text-gradient-accent font-display">Painel Admin</h2>
+          <h2 className="text-sm font-bold text-gradient-accent font-display">Painel</h2>
           <div className="flex items-center gap-2">
             <button onClick={() => setMobileMenu(!mobileMenu)} className="text-muted-foreground p-1">
               <Menu size={20} />
