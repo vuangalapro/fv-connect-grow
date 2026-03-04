@@ -498,14 +498,17 @@ const AdminDashboard = () => {
           // Show result to admin - simplified
           const bothDetected = result.like_detected && result.subscribe_detected;
           const oneDetected = result.like_detected || result.subscribe_detected;
+          const hasError = (result.details as any)?.analysis_error;
 
           let resultText: string;
-          if (bothDetected && result.confidence >= 0.7) {
+          if (hasError) {
+            resultText = '⚠️ Erro na análise (imagem não carregou)';
+          } else if (bothDetected && result.confidence >= 0.7) {
             resultText = '✅ Confiável';
           } else if (oneDetected && result.confidence >= 0.5) {
             resultText = '⚠️ Suspeito';
           } else {
-            resultText = '🚨 Fraude';
+            resultText = '🚨 Não detectado';
           }
 
           toast.info(resultText);
@@ -1959,16 +1962,29 @@ const AdminDashboard = () => {
                       )}
                       {/* YouTube Visual Analysis result display */}
                       {visualAnalysisResults[sub.id] && (
-                        <div className={`text-xs p-2 rounded-lg mb-1 ${(visualAnalysisResults[sub.id].like_detected && visualAnalysisResults[sub.id].subscribe_detected && visualAnalysisResults[sub.id].confidence >= 0.7) ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                          (visualAnalysisResults[sub.id].like_detected || visualAnalysisResults[sub.id].subscribe_detected) && visualAnalysisResults[sub.id].confidence >= 0.5 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-                            'bg-red-500/20 text-red-400 border border-red-500/30'
-                          }`}>
+                        <div className={`text-xs p-2 rounded-lg mb-1 ${
+                          // Check for analysis error
+                          (visualAnalysisResults[sub.id].details as any)?.analysis_error
+                            ? 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
+                            : (visualAnalysisResults[sub.id].like_detected && visualAnalysisResults[sub.id].subscribe_detected && visualAnalysisResults[sub.id].confidence >= 0.7)
+                              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
+                              : (visualAnalysisResults[sub.id].like_detected || visualAnalysisResults[sub.id].subscribe_detected) && visualAnalysisResults[sub.id].confidence >= 0.5
+                                ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
+                                : 'bg-red-500/20 text-red-400 border border-red-500/30'
+                        }`}>
                           <p className="font-bold">
-                            {(visualAnalysisResults[sub.id].like_detected && visualAnalysisResults[sub.id].subscribe_detected && visualAnalysisResults[sub.id].confidence >= 0.7) ? '✅ Like+Sub' :
-                              (visualAnalysisResults[sub.id].like_detected || visualAnalysisResults[sub.id].subscribe_detected) ? '⚠️ parcial' : '🚨 Não detectado'}
+                            {(visualAnalysisResults[sub.id].details as any)?.analysis_error
+                              ? '⚠️ Erro na análise'
+                              : (visualAnalysisResults[sub.id].like_detected && visualAnalysisResults[sub.id].subscribe_detected && visualAnalysisResults[sub.id].confidence >= 0.7)
+                                ? '✅ Like+Sub'
+                                : (visualAnalysisResults[sub.id].like_detected || visualAnalysisResults[sub.id].subscribe_detected)
+                                  ? '⚠️ parcial'
+                                  : '🚨 Não detectado'}
                           </p>
                           <p className="text-[10px] mt-1 opacity-80">
-                            Like: {visualAnalysisResults[sub.id].like_detected ? '✅' : '❌'} | Sub: {visualAnalysisResults[sub.id].subscribe_detected ? '✅' : '❌'} | Confiança: {Math.round(visualAnalysisResults[sub.id].confidence * 100)}%
+                            {(visualAnalysisResults[sub.id].details as any)?.analysis_error
+                              ? 'Imagem não carregou corretamente'
+                              : `Like: ${visualAnalysisResults[sub.id].like_detected ? '✅' : '❌'} | Sub: ${visualAnalysisResults[sub.id].subscribe_detected ? '✅' : '❌'} | Confiança: ${Math.round(visualAnalysisResults[sub.id].confidence * 100)}%`}
                           </p>
                         </div>
                       )}

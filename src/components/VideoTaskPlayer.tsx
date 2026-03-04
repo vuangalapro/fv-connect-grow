@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { generateDeviceFingerprint, formatTime } from '@/lib/fraudPrevention';
 import { performOCR, validateOCRMatch } from '@/lib/ocrService';
 import { useVideoTask } from '@/contexts/VideoTaskContext';
+import { supabase } from '@/lib/supabase';
 
 export interface VideoSubmissionData {
   screenshotData: string;
@@ -397,52 +398,112 @@ export default function VideoTaskPlayer({
     setIsUploading(true);
 
     try {
-      const reader = new FileReader();
-      reader.onload = async (e) => {
-        const screenshotData = e.target?.result as string;
+      // Create form data for direct upload to Supabase Storage
+      const fileName = `${taskId}/${userId}/${Date.now()}.${selectedFile.name.split('.').pop()}`;
 
-        // Calculate watch session metrics
-        const sessionData = watchSessionRef.current;
-        const totalPauses = sessionData.length - 1;
-        const maxContinuousWatch = sessionData.reduce((max, s) => {
-          const duration = (s.end || watchedTime) - s.start;
-          return Math.max(max, duration);
-        }, 0);
+      // Upload directly to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('screenshots')
+        .upload(fileName, selectedFile, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-        const submissionData: VideoSubmissionData = {
-          screenshotData,
-          watchedTime,
-          uniqueCommentCode: '',
-          deviceFingerprint,
-          startTime: startTime || new Date(),
-          watchSessionData: {
-            totalPauses,
-            maxContinuousWatch,
-          },
-          ocrResult: null,
-          fraudAlert: null,
+      if (uploadError) {
+        console.error('Upload error:', uploadError);
+        // Fallback to base64 if storage upload fails
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+          const screenshotData = e.target?.result as string;
+          await processSubmission(screenshotData);
         };
+        reader.readAsDataURL(selectedFile);
+        return;
+      }
 
-        if (onSubmit) {
-          await onSubmit(submissionData);
-        }
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('screenshots')
+        .getPublicUrl(fileName);
 
-        // Close popup after submission
-        setShowUpload(false);
-        setSelectedFile(null);
-        setIsOpen(false);
-        closeVideoTask();
-        setCanSubmit(false);
-        setWatchedTime(0);
-        setIsVideoCompleted(false);
+      const screenshotUrl = urlData.publicUrl;
+
+      // Calculate watch session metrics
+      const sessionData = watchSessionRef.current;
+      const totalPauses = sessionData.length - 1;
+      const maxContinuousWatch = sessionData.reduce((max, s) => {
+        const duration = (s.end || watchedTime) - s.start;
+        return Math.max(max, duration);
+      }, 0);
+
+      const submissionData: VideoSubmissionData = {
+        screenshotData: screenshotUrl,
+        watchedTime,
+        uniqueCommentCode: '',
+        deviceFingerprint,
+        startTime: startTime || new Date(),
+        watchSessionData: {
+          totalPauses,
+          maxContinuousWatch,
+        },
+        ocrResult: null,
+        fraudAlert: null,
       };
-      reader.readAsDataURL(selectedFile);
+
+      if (onSubmit) {
+        await onSubmit(submissionData);
+      }
+
+      // Close popup after submission
+      setShowUpload(false);
+      setSelectedFile(null);
+      setIsOpen(false);
+      closeVideoTask();
+      setCanSubmit(false);
+      setWatchedTime(0);
+      setIsVideoCompleted(false);
     } catch (error) {
       console.error('Upload error:', error);
       toast.error('Erro ao enviar prova');
     } finally {
       setIsUploading(false);
     }
+  };
+
+  // Helper function to process submission with base64 fallback
+  const processSubmission = async (screenshotData: string) => {
+    const sessionData = watchSessionRef.current;
+    const totalPauses = sessionData.length - 1;
+    const maxContinuousWatch = sessionData.reduce((max, s) => {
+      const duration = (s.end || watchedTime) - s.start;
+      return Math.max(max, duration);
+    }, 0);
+
+    const submissionData: VideoSubmissionData = {
+      screenshotData,
+      watchedTime,
+      uniqueCommentCode: '',
+      deviceFingerprint,
+      startTime: startTime || new Date(),
+      watchSessionData: {
+        totalPauses,
+        maxContinuousWatch,
+      },
+      ocrResult: null,
+      fraudAlert: null,
+    };
+
+    if (onSubmit) {
+      await onSubmit(submissionData);
+    }
+
+    setShowUpload(false);
+    setSelectedFile(null);
+    setIsOpen(false);
+    closeVideoTask();
+    setCanSubmit(false);
+    setWatchedTime(0);
+    setIsVideoCompleted(false);
   };
 
   if (!videoId) {

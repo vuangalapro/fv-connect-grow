@@ -79,11 +79,11 @@ export async function analyzeYouTubeScreenshot(
   }
 ): Promise<VisualAnalysisResult> {
   const startTime = Date.now();
-  
+
   try {
     // Step 1: Preprocess image and detect theme
     const imageAnalysis = await preprocessImage(imageData);
-    
+
     // Step 2: Define ROI (Region of Interest) for buttons
     // YouTube buttons are typically below the video player
     const roi = {
@@ -92,10 +92,10 @@ export async function analyzeYouTubeScreenshot(
       width: Math.floor(imageAnalysis.width * 0.8),
       height: Math.floor(imageAnalysis.height * 0.15),
     };
-    
+
     // Step 3: Detect theme
     const themeResult = detectTheme(imageAnalysis.pixels, imageAnalysis.width, imageAnalysis.height);
-    
+
     // Step 4: Detect colors in button regions
     const buttonAnalysis = analyzeButtonColors(
       imageAnalysis.pixels,
@@ -103,20 +103,20 @@ export async function analyzeYouTubeScreenshot(
       imageAnalysis.height,
       themeResult.theme
     );
-    
+
     // Step 5: Perform OCR on ROI
     const ocrResult = await performButtonOCR(imageData, roi);
-    
+
     // Step 6: Detect language from OCR text
     const languageResult = detectLanguage(ocrResult.text);
-    
+
     // Step 7: Calculate confidence scores
     const likeConfidence = calculateLikeConfidence(buttonAnalysis, ocrResult.text, languageResult.language);
     const subscribeConfidence = calculateSubscribeConfidence(buttonAnalysis, ocrResult.text, languageResult.language);
-    
+
     // Step 8: Calculate overall confidence
     const overallConfidence = (likeConfidence + subscribeConfidence + themeResult.confidence + languageResult.confidence) / 4;
-    
+
     const result: VisualAnalysisResult = {
       like_detected: likeConfidence > 0.5,
       subscribe_detected: subscribeConfidence > 0.5,
@@ -134,14 +134,14 @@ export async function analyzeYouTubeScreenshot(
         roi_text_found: ocrResult.text.substring(0, 200),
       },
     };
-    
+
     console.log('Visual Analysis Result:', result);
-    
+
     return result;
   } catch (error) {
     console.error('Visual Analysis Error:', error);
-    
-    // Return default result on error
+
+    // Return result with error flag on failure
     return {
       like_detected: false,
       subscribe_detected: false,
@@ -157,8 +157,9 @@ export async function analyzeYouTubeScreenshot(
         language_confidence: 0,
         average_button_color: '#000000',
         roi_text_found: '',
+        analysis_error: error instanceof Error ? error.message : 'Unknown error',
       },
-    };
+    } as VisualAnalysisResult & { details: { analysis_error: string } };
   }
 }
 
@@ -175,22 +176,22 @@ async function preprocessImage(imageData: string): Promise<{
     img.onload = () => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      
+
       if (!ctx) {
         reject(new Error('Could not get canvas context'));
         return;
       }
-      
+
       // Resize for faster processing (max 1280px width)
       const maxWidth = 1280;
       const scale = Math.min(1, maxWidth / img.width);
       canvas.width = img.width * scale;
       canvas.height = img.height * scale;
-      
+
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      
+
       const imageDataObj = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      
+
       resolve({
         pixels: imageDataObj.data,
         width: canvas.width,
@@ -213,20 +214,20 @@ function detectTheme(pixels: Uint8ClampedArray, width: number, height: number): 
   const sampleSize = 1000;
   let totalBrightness = 0;
   let sampleCount = 0;
-  
+
   for (let i = 0; i < Math.min(sampleSize, width * height); i++) {
     const idx = i * 4;
     const brightness = (pixels[idx] + pixels[idx + 1] + pixels[idx + 2]) / 3;
     totalBrightness += brightness;
     sampleCount++;
   }
-  
+
   const averageBrightness = totalBrightness / sampleCount;
-  
+
   // Dark theme typically has average brightness < 128
   const isDark = averageBrightness < 128;
   const confidence = Math.abs((averageBrightness / 255) - 0.5) * 2;
-  
+
   return {
     theme: isDark ? 'dark' : 'light',
     confidence: Math.max(0.5, confidence),
@@ -253,9 +254,9 @@ function analyzeButtonColors(
   const buttonAreaY = Math.floor(height * 0.35);
   const buttonAreaWidth = Math.floor(width * 0.25);
   const buttonAreaHeight = Math.floor(height * 0.12);
-  
+
   let totalR = 0, totalG = 0, totalB = 0, pixelCount = 0;
-  
+
   for (let y = buttonAreaY; y < buttonAreaY + buttonAreaHeight && y < height; y++) {
     for (let x = buttonAreaX; x < buttonAreaX + buttonAreaWidth && x < width; x++) {
       const idx = (y * width + x) * 4;
@@ -265,34 +266,34 @@ function analyzeButtonColors(
       pixelCount++;
     }
   }
-  
+
   const avgR = Math.floor(totalR / pixelCount);
   const avgG = Math.floor(totalG / pixelCount);
   const avgB = Math.floor(totalB / pixelCount);
-  
+
   const averageColor = `rgb(${avgR}, ${avgG}, ${avgB})`;
-  
+
   // Check if colors match active button colors
   const themeColors = BUTTON_COLORS[theme];
-  
+
   // Simple color distance check
   const likeDistance = Math.sqrt(
     Math.pow(avgR - (theme === 'dark' ? 255 : 0), 2) +
     Math.pow(avgG - (theme === 'dark' ? 255 : 0), 2) +
     Math.pow(avgB - (theme === 'dark' ? 255 : 0), 2)
   );
-  
+
   const subscribeDistance = Math.sqrt(
     Math.pow(avgR - (theme === 'dark' ? 0 : 255), 2) +
     Math.pow(avgG - (theme === 'dark' ? 0 : 255), 2) +
     Math.pow(avgB - (theme === 'dark' ? 0 : 255), 2)
   );
-  
+
   const maxDistance = Math.sqrt(3 * Math.pow(255, 2));
-  
+
   const likeConfidence = 1 - (likeDistance / maxDistance);
   const subscribeConfidence = 1 - (subscribeDistance / maxDistance);
-  
+
   return {
     averageColor,
     likeActive: likeConfidence > 0.6,
@@ -312,12 +313,12 @@ async function performButtonOCR(
   try {
     // First, crop the image to ROI
     const croppedData = await cropImageToROI(imageData, roi);
-    
+
     // Then perform OCR
     const result = await Tesseract.recognize(croppedData, 'eng+por', {
-      logger: () => {},
+      logger: () => { },
     });
-    
+
     return {
       text: result.data.text.toLowerCase(),
       confidence: result.data.confidence / 100,
@@ -340,17 +341,17 @@ async function cropImageToROI(
     img.onload = () => {
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
-      
+
       if (!ctx) {
         reject(new Error('Could not get canvas context'));
         return;
       }
-      
+
       canvas.width = roi.width;
       canvas.height = roi.height;
-      
+
       ctx.drawImage(img, roi.x, roi.y, roi.width, roi.height, 0, 0, roi.width, roi.height);
-      
+
       resolve(canvas.toDataURL('image/jpeg', 0.8));
     };
     img.onerror = reject;
@@ -366,10 +367,10 @@ function detectLanguage(text: string): {
   confidence: number;
 } {
   const lowerText = text.toLowerCase();
-  
+
   let ptScore = 0;
   let enScore = 0;
-  
+
   // Check Portuguese patterns
   for (const pattern of LANGUAGE_PATTERNS.pt.subscribed) {
     if (lowerText.includes(pattern)) ptScore += 1;
@@ -377,7 +378,7 @@ function detectLanguage(text: string): {
   for (const pattern of LANGUAGE_PATTERNS.pt.like) {
     if (lowerText.includes(pattern)) ptScore += 1;
   }
-  
+
   // Check English patterns
   for (const pattern of LANGUAGE_PATTERNS.en.subscribed) {
     if (lowerText.includes(pattern)) enScore += 1;
@@ -385,13 +386,13 @@ function detectLanguage(text: string): {
   for (const pattern of LANGUAGE_PATTERNS.en.like) {
     if (lowerText.includes(pattern)) enScore += 1;
   }
-  
+
   const totalScore = ptScore + enScore;
-  
+
   if (totalScore === 0) {
     return { language: 'en', confidence: 0.5 };
   }
-  
+
   return {
     language: ptScore >= enScore ? 'pt' : 'en',
     confidence: Math.max(0.5, (ptScore >= enScore ? ptScore : enScore) / totalScore),
@@ -407,19 +408,19 @@ function calculateLikeConfidence(
   language: 'pt' | 'en'
 ): number {
   let confidence = buttonAnalysis.likeConfidence;
-  
+
   // Boost confidence if "liked" text is found
-  const likePatterns = language === 'pt' 
+  const likePatterns = language === 'pt'
     ? ['curtido', 'gosto', 'liked']
     : ['liked', 'like'];
-  
+
   for (const pattern of likePatterns) {
     if (ocrText.includes(pattern)) {
       confidence += 0.3;
       break;
     }
   }
-  
+
   return Math.min(1, confidence);
 }
 
@@ -432,19 +433,19 @@ function calculateSubscribeConfidence(
   language: 'pt' | 'en'
 ): number {
   let confidence = buttonAnalysis.subscribeConfidence;
-  
+
   // Boost confidence if "subscribed" text is found
   const subscribePatterns = language === 'pt'
     ? ['subscrito', 'inscrito', 'subscreva', 'subscrever']
     : ['subscribed', 'subscribe', 'subscribing'];
-  
+
   for (const pattern of subscribePatterns) {
     if (ocrText.includes(pattern)) {
       confidence += 0.3;
       break;
     }
   }
-  
+
   return Math.min(1, confidence);
 }
 
@@ -460,7 +461,7 @@ export async function saveAnalysisToAudit(
 ): Promise<void> {
   try {
     const { supabase } = await import('@/lib/supabase');
-    
+
     await supabase.from('visual_analysis_audit').insert({
       task_id: options?.taskId || null,
       user_id: options?.userId || null,
@@ -473,7 +474,7 @@ export async function saveAnalysisToAudit(
       details: JSON.stringify(result.details),
       created_at: result.timestamp,
     });
-    
+
     console.log('Analysis saved to audit log');
   } catch (error) {
     console.error('Failed to save analysis to audit:', error);
