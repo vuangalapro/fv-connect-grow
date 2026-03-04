@@ -229,13 +229,12 @@ const AffiliateDashboard = () => {
     }
   }, [panel, user]);
 
-  // Loading screen
+  // Initial loading - show minimal content while auth loads
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-muted-foreground animate-pulse font-medium" style={{opacity: 0}}>A carregar o seu painel...</p>
+          <div className="w-8 h-8 border-2 border-primary/30 border-t-primary rounded-full animate-spin mx-auto"></div>
         </div>
       </div>
     );
@@ -606,6 +605,53 @@ const AffiliateDashboard = () => {
                 {slides.map((_, i) => (
                   <button key={i} onClick={() => setSlide(i)} className={`w-2 h-2 rounded-full transition-all ${i === slide ? 'bg-white w-6' : 'bg-white/40'}`} />
                 ))}
+              </div>
+            </div>
+            
+            {/* Progress Bars - Penalty Credit & Tasks */}
+            <div className="mt-8 space-y-6">
+              {/* Penalty Credit Progress Bar */}
+              <div className="p-4 bg-card rounded-xl border">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-medium flex items-center gap-2">
+                    <AlertTriangle size={18} className={profile.penaltyCredit <= 20 ? 'text-red-400' : profile.penaltyCredit <= 50 ? 'text-yellow-400' : 'text-green-400'} />
+                    Crédito de Penalidades
+                  </h3>
+                  <span className={`font-bold ${profile.penaltyCredit <= 20 ? 'text-red-400' : profile.penaltyCredit <= 50 ? 'text-yellow-400' : 'text-green-400'}`}>
+                    {profile.penaltyCredit}/100
+                  </span>
+                </div>
+                <div className="h-3 bg-muted rounded-full overflow-hidden">
+                  <div 
+                    className={`h-full transition-all ${profile.penaltyCredit <= 20 ? 'bg-red-500' : profile.penaltyCredit <= 50 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                    style={{ width: `${Math.max(0, profile.penaltyCredit)}%` }}
+                  />
+                </div>
+                {profile.penaltyCredit <= 20 && (
+                  <p className="text-xs text-red-400 mt-2">⚠️ Atenção: Seus créditos estão muito baixos.</p>
+                )}
+              </div>
+
+              {/* Tasks Completed Progress Bar */}
+              <div className="p-4 bg-card rounded-xl border">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-medium flex items-center gap-2">
+                    <CheckSquare size={18} className="text-primary" />
+                    Tarefas de Hoje
+                  </h3>
+                  <span className="font-bold text-primary">
+                    {completedTasks.length}/{tasks.length}
+                  </span>
+                </div>
+                <div className="h-3 bg-muted rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${tasks.length > 0 ? (completedTasks.length / tasks.length) * 100 : 0}%` }}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  {completedTasks.length === tasks.length ? '🎉 Todas as tarefas concluídas!' : `${tasks.length - completedTasks.length} tarefas restantes`}
+                </p>
               </div>
             </div>
           </div>
