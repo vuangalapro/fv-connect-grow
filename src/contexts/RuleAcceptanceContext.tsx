@@ -160,18 +160,19 @@ export function RuleAcceptanceProvider({ children }: { children: ReactNode }) {
       }
     }, 30000);
 
-    // Function to show rules modal on demand (for "Início" button)
-    const showRulesOnDemand = useCallback(() => {
-      if (!isAdmin) {
-        setShowRulesModal(true);
-      }
-    }, [isAdmin]);
-
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(interval);
     };
   }, [user, accepted]);
+
+  // Function to show rules modal on demand (for "Início" button)
+  // This must be defined outside useEffect so it's available immediately
+  const showRulesOnDemand = useCallback(() => {
+    if (!isAdmin) {
+      setShowRulesModal(true);
+    }
+  }, [isAdmin]);
 
   return (
     <RuleAcceptanceContext.Provider
