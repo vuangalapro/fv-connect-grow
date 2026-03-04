@@ -1293,10 +1293,10 @@ const AdminDashboard = () => {
         )}
 
         {isLoading && (
-          <div className="flex items-center justify-center py-16">
+          <div className="flex items-center justify-center py-16" style={{opacity: 0, pointerEvents: 'none'}}>
             <div className="text-center">
               <div className="w-10 h-10 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
-              <p className="text-sm text-muted-foreground animate-pulse">A carregar dados...</p>
+              <p className="text-sm text-muted-foreground animate-pulse" style={{opacity: 0}}>A carregar dados...</p>
             </div>
           </div>
         )}

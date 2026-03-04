@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 
@@ -9,6 +9,7 @@ interface RuleAcceptanceContextType {
   recordAcceptance: (userId: string) => Promise<void>;
   accepted: boolean;
   userId: string | null;
+  showRulesOnDemand: () => void;
 }
 
 const RuleAcceptanceContext = createContext<RuleAcceptanceContextType | undefined>(undefined);
@@ -159,6 +160,13 @@ export function RuleAcceptanceProvider({ children }: { children: ReactNode }) {
       }
     }, 30000);
 
+    // Function to show rules modal on demand (for "Início" button)
+    const showRulesOnDemand = useCallback(() => {
+      if (!isAdmin) {
+        setShowRulesModal(true);
+      }
+    }, [isAdmin]);
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       clearInterval(interval);
@@ -173,7 +181,8 @@ export function RuleAcceptanceProvider({ children }: { children: ReactNode }) {
         checkRulesAcceptance,
         recordAcceptance,
         accepted,
-        userId
+        userId,
+        showRulesOnDemand
       }}
     >
       {children}

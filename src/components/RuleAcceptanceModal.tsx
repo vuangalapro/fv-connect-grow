@@ -6,6 +6,7 @@ interface RuleAcceptanceModalProps {
   onClose: () => void;
   userId: string | null;
   onAccepted: () => void;
+  skipMode?: boolean; // If true, show "Pular" button for users who already accepted
 }
 
 const INSTRUCTIONS_CONTENT = {
@@ -72,7 +73,7 @@ const RULES_CONTENT = {
   finalText: "Ao continuar usando a plataforma, você concorda com estas regras.\nElas existem para **proteger afiliados honestos** e manter a plataforma justa para todos.\n\nBom trabalho e boas tarefas 🚀"
 };
 
-export default function RuleAcceptanceModal({ isOpen, onClose, userId, onAccepted }: RuleAcceptanceModalProps) {
+export default function RuleAcceptanceModal({ isOpen, onClose, userId, onAccepted, skipMode = false }: RuleAcceptanceModalProps) {
   const [stage, setStage] = useState<1 | 2>(1);
   const [agreed, setAgreed] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -336,15 +337,26 @@ export default function RuleAcceptanceModal({ isOpen, onClose, userId, onAccepte
         {/* Footer buttons */}
         <div className="px-6 py-4 bg-gray-50 dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 flex justify-between gap-3">
           
-          {/* Stage 1: Only Next button */}
+          {/* Stage 1: Next button (or Pular if skipMode) */}
           {stage === 1 && (
-            <button
-              onClick={handleNext}
-              className="flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors"
-            >
-              Próximo
-              <ArrowRight className="w-5 h-5" />
-            </button>
+            <div className="flex gap-3 w-full">
+              {skipMode && (
+                <button
+                  onClick={onClose}
+                  className="flex items-center justify-center gap-2 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-200 font-medium py-3 px-6 rounded-lg transition-colors"
+                >
+                  <ArrowRight className="w-5 h-5" />
+                  Pular
+                </button>
+              )}
+              <button
+                onClick={handleNext}
+                className={`flex-1 flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg transition-colors`}
+              >
+                Próximo
+                <ArrowRight className="w-5 h-5" />
+              </button>
+            </div>
           )}
 
           {/* Stage 2: Back and Confirm buttons */}

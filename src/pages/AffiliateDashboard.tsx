@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRuleAcceptance } from '@/contexts/RuleAcceptanceContext';
 import { useNavigate } from 'react-router-dom';
 import { LogOut, Home, CheckSquare, User, Wallet, Headphones, ChevronLeft, ChevronRight, ExternalLink, Upload, ArrowLeft, Send, MessageCircle, Menu, Banknote, ClipboardList, X, Trash2, Pencil, AlertTriangle, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,7 @@ const menuItems: { id: Panel; label: string; icon: any }[] = [
 
 const AffiliateDashboard = () => {
   const { user, loading, logout, refreshProfile } = useAuth();
+  const { showRulesOnDemand } = useRuleAcceptance();
   const { setSwitchToReviewsCallback } = useVideoTask();
   const navigate = useNavigate();
   const [panel, setPanel] = useState<Panel>('home');
@@ -505,7 +507,13 @@ const AffiliateDashboard = () => {
           {menuItems.map(item => (
             <button
               key={item.id}
-              onClick={() => { setPanel(item.id); setMobileMenu(false); }}
+              onClick={() => { 
+                if (item.id === 'home') {
+                  showRulesOnDemand();
+                }
+                setPanel(item.id); 
+                setMobileMenu(false); 
+              }}
               className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${panel === item.id ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
                 }`}
             >
@@ -543,7 +551,13 @@ const AffiliateDashboard = () => {
         {menuItems.map(item => (
           <button
             key={item.id}
-            onClick={() => { setPanel(item.id); setMobileMenu(false); }}
+            onClick={() => { 
+              if (item.id === 'home') {
+                showRulesOnDemand();
+              }
+              setPanel(item.id); 
+              setMobileMenu(false); 
+            }}
             className={`flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all ${panel === item.id ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary/50'
               }`}
           >

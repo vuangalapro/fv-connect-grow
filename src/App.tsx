@@ -34,6 +34,7 @@ function RuleAcceptanceModalWrapper() {
       onClose={() => setShowRulesModal(false)}
       userId={userId}
       onAccepted={handleAccepted}
+      skipMode={accepted} // Show "Pular" button if user already accepted rules
     />
   );
 }
