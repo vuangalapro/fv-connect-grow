@@ -504,44 +504,53 @@ const AdminDashboard = () => {
         }
 
         toast.info(resultText);
+        setIsAnalyzingVisual(null);
+        return;
       }
 
       // Convert to base64
       const reader = new FileReader();
       reader.onload = async () => {
-        const base64Image = reader.result as string;
+        try {
+          const base64Image = reader.result as string;
 
-        const result = await analyzeYouTubeScreenshot(base64Image, {
-          taskId: sub.task_id,
-          userId: sub.user_id,
-        });
+          const result = await analyzeYouTubeScreenshot(base64Image, {
+            taskId: sub.task_id,
+            userId: sub.user_id,
+          });
 
-        // Save to audit
-        await saveAnalysisToAudit(result, {
-          taskId: sub.task_id,
-          userId: sub.user_id,
-        });
+          // Save to audit
+          await saveAnalysisToAudit(result, {
+            taskId: sub.task_id,
+            userId: sub.user_id,
+          });
 
-        // Store result
-        setVisualAnalysisResults(prev => ({
-          ...prev,
-          [sub.id]: result,
-        }));
+          // Store result
+          setVisualAnalysisResults(prev => ({
+            ...prev,
+            [sub.id]: result,
+          }));
 
-        // Show result to admin - simplified
-        const bothDetected = result.like_detected && result.subscribe_detected;
-        const oneDetected = result.like_detected || result.subscribe_detected;
+          // Show result to admin - simplified
+          const bothDetected = result.like_detected && result.subscribe_detected;
+          const oneDetected = result.like_detected || result.subscribe_detected;
 
-        let resultText: string;
-        if (bothDetected && result.confidence >= 0.7) {
-          resultText = '✅ Confiável';
-        } else if (oneDetected && result.confidence >= 0.5) {
-          resultText = '⚠️ Suspeito';
-        } else {
-          resultText = '🚨 Fraude';
+          let resultText: string;
+          if (bothDetected && result.confidence >= 0.7) {
+            resultText = '✅ Confiável';
+          } else if (oneDetected && result.confidence >= 0.5) {
+            resultText = '⚠️ Suspeito';
+          } else {
+            resultText = '🚨 Fraude';
+          }
+
+          toast.info(resultText);
+        } catch (error) {
+          console.error('Error in reader.onload:', error);
+          toast.error('Erro ao processar imagem');
+        } finally {
+          setIsAnalyzingVisual(null);
         }
-
-        toast.info(resultText);
       };
 
       reader.onerror = () => {
