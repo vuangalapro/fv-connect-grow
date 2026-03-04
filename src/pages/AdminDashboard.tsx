@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle, Loader2 } from 'lucide-react';
+import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -144,6 +144,7 @@ const AdminDashboard = () => {
     checkedFingerprints: string[];
   }>>({});
   const [analyzedTasks, setAnalyzedTasks] = useState<Set<string>>(new Set());
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   // Time series data for charts - registrations per day
   const [userRegistrations, setUserRegistrations] = useState<{ date: string; count: number }[]>([]);
@@ -1461,9 +1462,25 @@ const AdminDashboard = () => {
         {/* USERS */}
         {panel === 'users' && !selectedUser && (
           <div>
-            <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
-              <ArrowLeft size={16} /> Voltar
-            </button>
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                <ArrowLeft size={16} /> Voltar
+              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  setIsRefreshing(true);
+                  await fetchData();
+                  setIsRefreshing(false);
+                }}
+                disabled={isRefreshing}
+                className="gap-2"
+              >
+                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                Atualizar
+              </Button>
+            </div>
             <h2 className="text-2xl font-bold mb-4 font-display">Utilizadores Registados ({users.length})</h2>
             <div className="relative mb-4 max-w-md">
               <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -1527,9 +1544,27 @@ const AdminDashboard = () => {
 
         {panel === 'users' && selectedUser && (
           <div>
-            <button onClick={() => setSelectedUser(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
-              <ArrowLeft size={16} /> Voltar
-            </button>
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setSelectedUser(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                <ArrowLeft size={16} /> Voltar
+              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  setIsRefreshing(true);
+                  // Refresh user data
+                  const { data } = await supabase.from('profiles').select('*').eq('id', selectedUser.id).single();
+                  if (data) setSelectedUser(data);
+                  setIsRefreshing(false);
+                }}
+                disabled={isRefreshing}
+                className="gap-2"
+              >
+                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                Atualizar
+              </Button>
+            </div>
             <h2 className="text-2xl font-bold mb-6 font-display">Detalhes do Utilizador</h2>
             <div className="glass rounded-2xl p-6 max-w-lg space-y-4">
               <div>
@@ -1696,9 +1731,28 @@ const AdminDashboard = () => {
         {/* VALIDATE TASKS */}
         {panel === 'tasks' && (
           <div>
-            <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
-              <ArrowLeft size={16} /> Voltar
-            </button>
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                <ArrowLeft size={16} /> Voltar
+              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  setIsRefreshing(true);
+                  processedTaskIds.current = [];
+                  setAnalyzedTasks(new Set());
+                  setAnalysisResults({});
+                  await fetchData();
+                  setIsRefreshing(false);
+                }}
+                disabled={isRefreshing}
+                className="gap-2"
+              >
+                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                Atualizar
+              </Button>
+            </div>
             <h2 className="text-2xl font-bold mb-6 font-display">Validar Tarefas ({submissions.filter(s => s.status === 'pending').length} pendentes)</h2>
             <div className="space-y-4">
               {submissions.filter(sub => !processedTaskIds.current.includes(sub.id) && !analyzedTasks.has(sub.id)).map(sub => (
@@ -1793,9 +1847,25 @@ const AdminDashboard = () => {
         {/* ADS */}
         {panel === 'ads' && (
           <div>
-            <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
-              <ArrowLeft size={16} /> Voltar
-            </button>
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                <ArrowLeft size={16} /> Voltar
+              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  setIsRefreshing(true);
+                  await fetchData();
+                  setIsRefreshing(false);
+                }}
+                disabled={isRefreshing}
+                className="gap-2"
+              >
+                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                Atualizar
+              </Button>
+            </div>
             <h2 className="text-2xl font-bold mb-4 font-display">Publicidades Recebidas ({filteredAds.length})</h2>
             <div className="mb-6">
               <Input
@@ -1861,9 +1931,25 @@ const AdminDashboard = () => {
         {/* MESSAGES - Support Messages */}
         {panel === 'messages' && (
           <div>
-            <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
-              <ArrowLeft size={16} /> Voltar
-            </button>
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                <ArrowLeft size={16} /> Voltar
+              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  setIsRefreshing(true);
+                  await fetchData();
+                  setIsRefreshing(false);
+                }}
+                disabled={isRefreshing}
+                className="gap-2"
+              >
+                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                Atualizar
+              </Button>
+            </div>
             <h2 className="text-2xl font-bold mb-6 font-display">Mensagens de Suporte ({unreadMessagesCount > 0 ? `${unreadMessagesCount} nova(s)` : 'Todas vistas'})</h2>
             <div className="space-y-4">
               {supportMessages.map(msg => (
@@ -2110,9 +2196,25 @@ const AdminDashboard = () => {
         {/* WITHDRAWALS */}
         {panel === 'withdrawals' && (
           <div>
-            <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
-              <ArrowLeft size={16} /> Voltar
-            </button>
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                <ArrowLeft size={16} /> Voltar
+              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  setIsRefreshing(true);
+                  await fetchData();
+                  setIsRefreshing(false);
+                }}
+                disabled={isRefreshing}
+                className="gap-2"
+              >
+                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                Atualizar
+              </Button>
+            </div>
             <h2 className="text-2xl font-bold mb-6 font-display">Pedidos de Saque ({withdrawals.filter(w => w.status === 'pending').length} pendentes)</h2>
             <div className="space-y-4">
               {withdrawals.map(w => (
