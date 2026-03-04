@@ -461,121 +461,71 @@ const AdminDashboard = () => {
     setIsAnalyzingVisual(sub.id);
 
     try {
-      // Fetch the screenshot image
-      const { data: imageData, error: fetchError } = await supabase.storage
-        .from('screenshots')
-        .download(sub.screenshot_url);
+      let imageData: string | null = null;
 
-      if (fetchError || !imageData) {
-        // Try as public URL
-        const imageUrl = sub.screenshot_url.startsWith('http')
-          ? sub.screenshot_url
-          : `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/screenshots/${sub.screenshot_url}`;
+      // Check if screenshot_url is already a full URL or just a path
+      if (sub.screenshot_url.startsWith('http')) {
+        // Already a full URL - use it directly
+        imageData = sub.screenshot_url;
+      } else {
+        // Try to download from Storage bucket
+        const { data: fileData, error: fetchError } = await supabase.storage
+          .from('screenshots')
+          .download(sub.screenshot_url);
 
-        try {
-          // Analyze using the URL
-          const result = await analyzeYouTubeScreenshot(imageUrl, {
-            taskId: sub.task_id,
-            userId: sub.user_id,
+        if (!fetchError && fileData) {
+          // Convert to base64
+          imageData = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result as string);
+            reader.onerror = () => reject(new Error('Failed to read file'));
+            reader.readAsDataURL(fileData);
           });
-
-          // Save to audit (ignore errors - table might not exist)
-          try {
-            await saveAnalysisToAudit(result, {
-              taskId: sub.task_id,
-              userId: sub.user_id,
-            });
-          } catch (auditError) {
-            console.warn('Could not save to audit log:', auditError);
-          }
-
-          // Store result
-          setVisualAnalysisResults(prev => ({
-            ...prev,
-            [sub.id]: result,
-          }));
-
-          // Show result to admin - simplified
-          const bothDetected = result.like_detected && result.subscribe_detected;
-          const oneDetected = result.like_detected || result.subscribe_detected;
-          const hasError = (result.details as any)?.analysis_error;
-
-          let resultText: string;
-          if (hasError) {
-            resultText = '⚠️ Erro na análise (imagem não carregou)';
-          } else if (bothDetected && result.confidence >= 0.7) {
-            resultText = '✅ Confiável';
-          } else if (oneDetected && result.confidence >= 0.5) {
-            resultText = '⚠️ Suspeito';
-          } else {
-            resultText = '🚨 Não detectado';
-          }
-
-          toast.info(resultText);
-        } catch (analysisError) {
-          console.error('Analysis failed:', analysisError);
-          toast.error('Erro ao analisar imagem. Verifique a conexão.');
+        } else {
+          // Fallback to public URL construction
+          imageData = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/screenshots/${sub.screenshot_url}`;
         }
-
-        setIsAnalyzingVisual(null);
-        return;
       }
 
-      // Convert to base64
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const base64Image = reader.result as string;
+      // Analyze the image
+      const result = await analyzeYouTubeScreenshot(imageData, {
+        taskId: sub.task_id,
+        userId: sub.user_id,
+      });
 
-          const result = await analyzeYouTubeScreenshot(base64Image, {
-            taskId: sub.task_id,
-            userId: sub.user_id,
-          });
+      // Save to audit (ignore errors - table might not exist)
+      try {
+        await saveAnalysisToAudit(result, {
+          taskId: sub.task_id,
+          userId: sub.user_id,
+        });
+      } catch (auditError) {
+        console.warn('Could not save to audit log:', auditError);
+      }
 
-          // Save to audit (ignore errors - table might not exist)
-          try {
-            await saveAnalysisToAudit(result, {
-              taskId: sub.task_id,
-              userId: sub.user_id,
-            });
-          } catch (auditError) {
-            console.warn('Could not save to audit log:', auditError);
-          }
+      // Store result
+      setVisualAnalysisResults(prev => ({
+        ...prev,
+        [sub.id]: result,
+      }));
 
-          // Store result
-          setVisualAnalysisResults(prev => ({
-            ...prev,
-            [sub.id]: result,
-          }));
+      // Show result to admin
+      const bothDetected = result.like_detected && result.subscribe_detected;
+      const oneDetected = result.like_detected || result.subscribe_detected;
+      const hasError = (result.details as any)?.analysis_error;
 
-          // Show result to admin - simplified
-          const bothDetected = result.like_detected && result.subscribe_detected;
-          const oneDetected = result.like_detected || result.subscribe_detected;
+      let resultText: string;
+      if (hasError) {
+        resultText = '⚠️ Erro na análise (imagem não carregou)';
+      } else if (bothDetected && result.confidence >= 0.7) {
+        resultText = '✅ Confiável';
+      } else if (oneDetected && result.confidence >= 0.5) {
+        resultText = '⚠️ Suspeito';
+      } else {
+        resultText = '🚨 Não detectado';
+      }
 
-          let resultText: string;
-          if (bothDetected && result.confidence >= 0.7) {
-            resultText = '✅ Confiável';
-          } else if (oneDetected && result.confidence >= 0.5) {
-            resultText = '⚠️ Suspeito';
-          } else {
-            resultText = '🚨 Fraude';
-          }
-
-          toast.info(resultText);
-        } catch (error) {
-          console.error('Error in reader.onload:', error);
-          toast.error('Erro ao processar imagem');
-        } finally {
-          setIsAnalyzingVisual(null);
-        }
-      };
-
-      reader.onerror = () => {
-        toast.error('Erro ao processar imagem');
-      };
-
-      reader.readAsDataURL(imageData);
-
+      toast.info(resultText);
     } catch (error) {
       console.error('Visual Analysis Error:', error);
       toast.error('Erro ao analisar captura de ecrã');
@@ -1971,7 +1921,7 @@ const AdminDashboard = () => {
                               : (visualAnalysisResults[sub.id].like_detected || visualAnalysisResults[sub.id].subscribe_detected) && visualAnalysisResults[sub.id].confidence >= 0.5
                                 ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
                                 : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                        }`}>
+                          }`}>
                           <p className="font-bold">
                             {(visualAnalysisResults[sub.id].details as any)?.analysis_error
                               ? '⚠️ Erro na análise'
