@@ -406,6 +406,45 @@ const AdminDashboard = () => {
       if (!sub.screenshot_url) {
         riskScore += 15;
         details.push(`⚠️ Sem captura de ecrã carregada`);
+      } else {
+        // 6b. Analyze screenshot using template matching for like/subscribe detection
+        try {
+          let imageUrl: string;
+          
+          // Check if screenshot_url is already a full URL or just a path
+          if (sub.screenshot_url.startsWith('http')) {
+            imageUrl = sub.screenshot_url;
+          } else {
+            imageUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/screenshots/${sub.screenshot_url}`;
+          }
+
+          // Analyze the screenshot using template matching
+          const visualResult = await analyzeVisualAntifraud(imageUrl);
+
+          // Store visual analysis result
+          setVisualAnalysisResults(prev => ({
+            ...prev,
+            [sub.id]: visualResult,
+          }));
+
+          // Adjust risk score based on visual analysis
+          if (visualResult.status === 'CONFIRMADO') {
+            // Like and subscribe detected - very low risk
+            riskScore = Math.max(0, riskScore - 30);
+            details.push(`✅ LIKE e INSCRIÇÃO detetados via template matching`);
+          } else if (visualResult.status === 'PROVAVEL') {
+            // Partial detection - slightly reduce risk
+            riskScore = Math.max(0, riskScore - 15);
+            details.push(`⚠️ Elementos parciais detetados: Like=${visualResult.like_detected ? 'Sim' : 'Não'}, Subscrito=${visualResult.subscribe_detected ? 'Sim' : 'Não'}`);
+          } else if (visualResult.status === 'SUSPEITO') {
+            // No clear detection - increase risk
+            riskScore += 25;
+            details.push(`🚨 LIKE ou INSCRIÇÃO NÃO DETETADOS - screenshot pode ser inválido`);
+          }
+        } catch (visualError) {
+          console.error('Visual analysis error:', visualError);
+          details.push(`⚠️ Erro na análise visual automática`);
+        }
       }
 
       // 7. Check for existing fraud alerts on user's submissions
