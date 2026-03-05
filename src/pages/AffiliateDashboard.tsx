@@ -380,8 +380,10 @@ const AffiliateDashboard = () => {
     if (!user) return;
     const amount = parseFloat(withdrawAmount);
     if (!amount || amount <= 0) { toast.error('Insira um valor válido'); return; }
+    if (amount < 5000) { toast.error('O valor mínimo para saque é 5.000 Kz'); return; }
     if (amount > balance) { toast.error('Saldo insuficiente'); return; }
     if (!profile.bankAccount) { toast.error('Registe sua conta bancária no Meu Perfil'); return; }
+    if ((profile.penaltyCredit || 100) < 20) { toast.error('Utilizador bloqueado. Contacte o suporte.'); return; }
 
     try {
       // Use atomic RPC to deduct balance (prevents race conditions)
@@ -595,6 +597,16 @@ const AffiliateDashboard = () => {
         {/* HOME - Slider */}
         {panel === 'home' && (
           <div>
+            {/* Blocked Warning Banner */}
+            {(profile.penaltyCredit || 100) < 20 && (
+              <div className="mb-4 p-4 bg-red-500/20 border border-red-500/30 rounded-xl">
+                <div className="flex items-center gap-2 text-red-400 font-bold">
+                  <AlertTriangle size={20} />
+                  Utilizador bloqueado por infração
+                </div>
+                <p className="text-sm text-red-300/80 mt-1">Por favor, contacte o suporte para resolver esta situação.</p>
+              </div>
+            )}
             <div className="relative rounded-2xl overflow-hidden h-64 md:h-96 lg:h-[400px]">
               {slides.map((s, i) => (
                 <div
@@ -672,10 +684,19 @@ const AffiliateDashboard = () => {
         {/* TASKS */}
         {panel === 'tasks' && (
           <div className="overflow-visible">
-            <button onClick={() => setPanel('home')} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
-              <ArrowLeft size={16} /> Voltar
-            </button>
-            <h2 className="text-2xl font-bold mb-2 font-display">Completar tarefas hoje</h2>
+            {(profile.penaltyCredit || 100) < 20 ? (
+              <div className="p-8 text-center">
+                <AlertTriangle size={48} className="mx-auto text-red-400 mb-4" />
+                <h3 className="text-xl font-bold text-red-400 mb-2">Utilizador Bloqueado</h3>
+                <p className="text-muted-foreground">Não pode aceder às tarefas devido a infrações.</p>
+                <p className="text-sm text-muted-foreground mt-2">Contacte o suporte para mais informações.</p>
+              </div>
+            ) : (
+              <>
+                <button onClick={() => setPanel('home')} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
+                  <ArrowLeft size={16} /> Voltar
+                </button>
+                <h2 className="text-2xl font-bold mb-2 font-display">Completar tarefas hoje</h2>
             <p className="text-muted-foreground mb-6">{completedTasks.length}/{tasks.length} tarefas completas</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {availableTasks.map(task => {
@@ -827,6 +848,7 @@ const AffiliateDashboard = () => {
               {tasks.length > 0 && availableTasks.length === 0 && <p className="text-muted-foreground">Todas as tarefas de hoje foram concluídas</p>}
             </div>
           </div>
+          )}
         )}
 
         {/* REVIEWS */}
@@ -1106,6 +1128,15 @@ const AffiliateDashboard = () => {
               <ArrowLeft size={16} /> Voltar
             </button>
             <h2 className="text-2xl font-bold mb-6 font-display">Minha Carteira</h2>
+            {(profile.penaltyCredit || 100) < 20 && (
+              <div className="mb-4 p-4 bg-red-500/20 border border-red-500/30 rounded-xl">
+                <div className="flex items-center gap-2 text-red-400 font-bold">
+                  <AlertTriangle size={20} />
+                  Utilizador bloqueado
+                </div>
+                <p className="text-sm text-red-300/80 mt-1">Não pode realizar saques. Contacte o suporte.</p>
+              </div>
+            )}
             <div className="grid gap-4 max-w-lg">
               <div className="glass rounded-2xl p-6">
                 <p className="text-sm text-muted-foreground">Saldo Disponível</p>
@@ -1117,8 +1148,20 @@ const AffiliateDashboard = () => {
               </div>
               <div className="glass rounded-2xl p-6">
                 <p className="text-sm text-muted-foreground mb-2">Fundo a Retirar</p>
-                <Input type="number" placeholder="Valor em Kz" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} className="bg-secondary/50 mb-3" />
-                <Button onClick={handleWithdraw} className="w-full btn-glow-accent !rounded-xl">
+                <p className="text-xs text-amber-400 mb-2">Valor mínimo: 5.000 Kz</p>
+                <Input 
+                  type="number" 
+                  placeholder="Valor em Kz" 
+                  value={withdrawAmount} 
+                  onChange={e => setWithdrawAmount(e.target.value)} 
+                  className="bg-secondary/50 mb-3"
+                  disabled={(profile.penaltyCredit || 100) < 20}
+                />
+                <Button 
+                  onClick={handleWithdraw} 
+                  className="w-full btn-glow-accent !rounded-xl"
+                  disabled={(profile.penaltyCredit || 100) < 20}
+                >
                   Sacar
                 </Button>
               </div>
