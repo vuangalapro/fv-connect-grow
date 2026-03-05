@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-import { analyzeVisualAntifraud, getStatusText, VisualAnalysisResult } from '@/lib/visualAntifraud';
+import { analyzeVisualAntifraud, VisualAnalysisResult } from '@/lib/visualAntifraud';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
@@ -460,6 +460,7 @@ const AdminDashboard = () => {
     }
 
     setIsAnalyzingVisual(sub.id);
+    toast.info('🔄 A analisar captura de ecrã... Por favor aguarde.');
 
     try {
       let imageUrl: string;
@@ -483,7 +484,13 @@ const AdminDashboard = () => {
       }));
 
       // Show result to admin with clear status
-      toast.info(getStatusText(result.status));
+      const statusMessages: Record<string, string> = {
+        'CONFIRMADO': '✅ Análise Visual: CONFIRMADO - Like e Inscrito detectados!',
+        'PROVAVEL': '⚠️ Análise Visual: PROVÁVEL - Alguns elementos podem estar ausentes',
+        'SUSPEITO': '❌ Análise Visual: SUSPEITO - Elementos não detectados',
+        'INCONCLUSIVO': '❓ Análise Visual: INCONCLUSIVO - Não foi possível analisar'
+      };
+      toast.info(statusMessages[result.status] || 'Análise concluída');
     } catch (error) {
       console.error('Visual Analysis Error:', error);
       toast.error('Erro ao analisar captura de ecrã');
@@ -2384,11 +2391,11 @@ const AdminDashboard = () => {
         )}
       </div>
 
-      {/* File Preview Modal */}
+      {/* File Preview Modal - Fullscreen */}
       {previewFile && (
-        <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center p-4">
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] flex flex-col">
-            <div className="p-3 sm:p-4 border-b border-border flex items-center justify-between bg-background/80 backdrop-blur rounded-t-lg shrink-0">
+        <div className="fixed inset-0 z-[99999] bg-black flex items-center justify-center">
+          <div className="w-screen h-screen flex flex-col">
+            <div className="p-3 sm:p-4 border-b border-border flex items-center justify-between bg-background/90 backdrop-blur shrink-0">
               <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
                 <h3 className="font-bold text-foreground truncate text-sm sm:text-base">{previewFile.title}</h3>
               </div>
@@ -2396,25 +2403,25 @@ const AdminDashboard = () => {
                 <ArrowLeft size={16} /> <span className="hidden sm:inline">Voltar</span>
               </Button>
             </div>
-            <div className="flex-1 bg-black/30 flex items-center justify-center p-2 sm:p-4 overflow-auto">
+            <div className="flex-1 flex items-center justify-center p-2 sm:p-4 overflow-auto bg-black">
               {previewFile.data.startsWith('data:image/') || previewFile.data.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i) ? (
                 <img
                   src={previewFile.data}
                   alt="Preview"
-                  className="max-w-[90vw] max-h-[85vh] object-contain shadow-2xl rounded-lg"
+                  className="max-w-full max-h-full object-contain"
                 />
               ) : previewFile.data.startsWith('data:video/') || previewFile.data.includes('youtube.com/embed') || previewFile.data.includes('player.vimeo') || previewFile.data.match(/\.(mp4|webm|ogg)$/i) ? (
                 <video 
                   src={previewFile.data} 
                   controls 
-                  className="max-w-[90vw] max-h-[85vh] rounded-lg"
+                  className="max-w-full max-h-full"
                   autoPlay={false}
                 />
               ) : (
                 <iframe 
                   src={previewFile.data} 
                   title="Document Preview" 
-                  className="w-full h-full min-h-[500px] rounded-lg bg-white" 
+                  className="w-full h-full min-h-[500px]" 
                 />
               )}
             </div>
