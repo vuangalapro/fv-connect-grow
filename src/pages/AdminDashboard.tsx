@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-import { analyzeYouTubeScreenshot, saveAnalysisToAudit, VisualAnalysisResult } from '@/lib/youtubeVisualAnalysis';
+import { analyzeVisualAntifraud, getStatusText, VisualAnalysisResult } from '@/lib/visualAntifraud';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
@@ -450,6 +450,7 @@ const AdminDashboard = () => {
   };
 
   // Visual analysis function - analyzes YouTube screenshot for like/subscribe detection
+  // ONLY runs when admin clicks "Verificar Fraude" button
   const analyzeYouTubeTask = async (sub: any) => {
     if (isAnalyzingVisual) return;
 
@@ -461,47 +462,19 @@ const AdminDashboard = () => {
     setIsAnalyzingVisual(sub.id);
 
     try {
-      let imageData: string | null = null;
+      let imageUrl: string;
 
       // Check if screenshot_url is already a full URL or just a path
       if (sub.screenshot_url.startsWith('http')) {
         // Already a full URL - use it directly
-        imageData = sub.screenshot_url;
+        imageUrl = sub.screenshot_url;
       } else {
-        // Try to download from Storage bucket
-        const { data: fileData, error: fetchError } = await supabase.storage
-          .from('screenshots')
-          .download(sub.screenshot_url);
-
-        if (!fetchError && fileData) {
-          // Convert to base64
-          imageData = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(reader.result as string);
-            reader.onerror = () => reject(new Error('Failed to read file'));
-            reader.readAsDataURL(fileData);
-          });
-        } else {
-          // Fallback to public URL construction
-          imageData = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/screenshots/${sub.screenshot_url}`;
-        }
+        // Construct public URL
+        imageUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/screenshots/${sub.screenshot_url}`;
       }
 
-      // Analyze the image
-      const result = await analyzeYouTubeScreenshot(imageData, {
-        taskId: sub.task_id,
-        userId: sub.user_id,
-      });
-
-      // Save to audit (ignore errors - table might not exist)
-      try {
-        await saveAnalysisToAudit(result, {
-          taskId: sub.task_id,
-          userId: sub.user_id,
-        });
-      } catch (auditError) {
-        console.warn('Could not save to audit log:', auditError);
-      }
+      // Analyze the image using the new visual antifraud service
+      const result = await analyzeVisualAntifraud(imageUrl);
 
       // Store result
       setVisualAnalysisResults(prev => ({
@@ -509,23 +482,8 @@ const AdminDashboard = () => {
         [sub.id]: result,
       }));
 
-      // Show result to admin
-      const bothDetected = result.like_detected && result.subscribe_detected;
-      const oneDetected = result.like_detected || result.subscribe_detected;
-      const hasError = (result.details as any)?.analysis_error;
-
-      let resultText: string;
-      if (hasError) {
-        resultText = '⚠️ Erro na análise (imagem não carregou)';
-      } else if (bothDetected && result.confidence >= 0.7) {
-        resultText = '✅ Confiável';
-      } else if (oneDetected && result.confidence >= 0.5) {
-        resultText = '⚠️ Suspeito';
-      } else {
-        resultText = '🚨 Não detectado';
-      }
-
-      toast.info(resultText);
+      // Show result to admin with clear status
+      toast.info(getStatusText(result.status));
     } catch (error) {
       console.error('Visual Analysis Error:', error);
       toast.error('Erro ao analisar captura de ecrã');
@@ -1918,31 +1876,36 @@ const AdminDashboard = () => {
                       )}
                       {/* YouTube Visual Analysis result display */}
                       {visualAnalysisResults[sub.id] && (
-                        <div className={`text-xs p-2 rounded-lg mb-1 ${
-                          // Check for analysis error
-                          (visualAnalysisResults[sub.id].details as any)?.analysis_error
-                            ? 'bg-gray-500/20 text-gray-400 border border-gray-500/30'
-                            : (visualAnalysisResults[sub.id].like_detected && visualAnalysisResults[sub.id].subscribe_detected && visualAnalysisResults[sub.id].confidence >= 0.7)
-                              ? 'bg-green-500/20 text-green-400 border border-green-500/30'
-                              : (visualAnalysisResults[sub.id].like_detected || visualAnalysisResults[sub.id].subscribe_detected) && visualAnalysisResults[sub.id].confidence >= 0.5
-                                ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30'
-                                : 'bg-red-500/20 text-red-400 border border-red-500/30'
-                          }`}>
-                          <p className="font-bold">
-                            {(visualAnalysisResults[sub.id].details as any)?.analysis_error
-                              ? '⚠️ Erro na análise'
-                              : (visualAnalysisResults[sub.id].like_detected && visualAnalysisResults[sub.id].subscribe_detected && visualAnalysisResults[sub.id].confidence >= 0.7)
-                                ? '✅ Like+Sub'
-                                : (visualAnalysisResults[sub.id].like_detected || visualAnalysisResults[sub.id].subscribe_detected)
-                                  ? '⚠️ parcial'
-                                  : '🚨 Não detectado'}
-                          </p>
-                          <p className="text-[10px] mt-1 opacity-80">
-                            {(visualAnalysisResults[sub.id].details as any)?.analysis_error
-                              ? 'Imagem não carregou corretamente'
-                              : `Like: ${visualAnalysisResults[sub.id].like_detected ? '✅' : '❌'} | Sub: ${visualAnalysisResults[sub.id].subscribe_detected ? '✅' : '❌'} | Confiança: ${Math.round(visualAnalysisResults[sub.id].confidence * 100)}%`}
-                          </p>
-                        </div>
+                        <>
+                          {(() => {
+                            const result = visualAnalysisResults[sub.id];
+                            const statusColors: Record<string, string> = {
+                              'CONFIRMADO': 'bg-green-500/20 text-green-400 border border-green-500/30',
+                              'PROVAVEL': 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
+                              'INCONCLUSIVO': 'bg-gray-500/20 text-gray-400 border border-gray-500/30',
+                              'SUSPEITO': 'bg-red-500/20 text-red-400 border border-red-500/30',
+                            };
+                            const statusLabels: Record<string, string> = {
+                              'CONFIRMADO': '✅ CONFIRMADO',
+                              'PROVAVEL': '⚠️ PROVÁVEL',
+                              'INCONCLUSIVO': '❓ INCONCLUSIVO',
+                              'SUSPEITO': '🚨 SUSPEITO',
+                            };
+                            const displayStatus = result?.status || 'INCONCLUSIVO';
+                            const displayColor = statusColors[displayStatus] || 'bg-gray-500/20 text-gray-400';
+                            const displayLabel = statusLabels[displayStatus] || displayStatus;
+                            const displayDetails = displayStatus === 'INCONCLUSIVO' && (result?.details as any)?.error_message
+                              ? (result.details as any).error_message
+                              : `Like: ${result?.like_detected ? '✅' : '❌'} | Sub: ${result?.subscribe_detected ? '✅' : '❌'} | Confiança: ${Math.round((result?.confidence || 0) * 100)}%`;
+                            
+                            return (
+                              <div className={`text-xs p-2 rounded-lg mb-1 ${displayColor}`}>
+                                <p className="font-bold">{displayLabel}</p>
+                                <p className="text-[10px] mt-1 opacity-80">{displayDetails}</p>
+                              </div>
+                            );
+                          })()}
+                        </>
                       )}
                       <div className="flex gap-2">
                         {/* Analyze button */}
