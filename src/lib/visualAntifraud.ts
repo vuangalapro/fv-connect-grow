@@ -39,12 +39,18 @@ export interface VisualAnalysisResult {
 const RGB_TOLERANCE = 15;
 const GRAY_THRESHOLD = 80;
 
-// Template matching threshold
-const TEMPLATE_THRESHOLD = 0.75;
+// Template matching threshold (85%)
+const TEMPLATE_THRESHOLD = 0.85;
 
 // Button regions - adjusted coordinates for YouTube UI
 const LIKE_REGION = { x: 0.80, y: 0.05, w: 0.05, h: 0.02 };
 const SUBSCRIBE_REGION = { x: 0.80, y: 0.08, w: 0.08, h: 0.025 };
+
+// Cached templates
+let loadedTemplates: {
+  like: { light: HTMLImageElement | null; dark: HTMLImageElement | null };
+  subscribe: { light: HTMLImageElement | null; dark: HTMLImageElement | null };
+} | null = null;
 
 // Safe region getters
 function getLikeRegion(): { x: number; y: number; w: number; h: number } {
@@ -53,6 +59,46 @@ function getLikeRegion(): { x: number; y: number; w: number; h: number } {
 
 function getSubscribeRegion(): { x: number; y: number; w: number; h: number } {
   return SUBSCRIBE_REGION || { x: 0.80, y: 0.08, w: 0.08, h: 0.025 };
+}
+
+// Load template images
+async function loadTemplate(url: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => resolve(img);
+    img.onerror = () => {
+      console.warn(`Failed to load template: ${url}`);
+      resolve(null);
+    };
+    img.src = url;
+  });
+}
+
+// Load all templates
+async function loadTemplates(): Promise<void> {
+  if (loadedTemplates) return;
+  
+  const baseUrl = window.location.origin;
+  
+  const [likeLight, likeDark, subsLight, subsDark] = await Promise.all([
+    loadTemplate(`${baseUrl}/templates/like_template_light.png`),
+    loadTemplate(`${baseUrl}/templates/like_template_dark.png`),
+    loadTemplate(`${baseUrl}/templates/subscrito_template_light.png`),
+    loadTemplate(`${baseUrl}/templates/subscrito_template_dark.png`)
+  ]);
+  
+  loadedTemplates = {
+    like: { light: likeLight, dark: likeDark },
+    subscribe: { light: subsLight, dark: subsDark }
+  };
+  
+  console.log("Templates loaded:", {
+    likeLight: !!likeLight,
+    likeDark: !!likeDark,
+    subsLight: !!subsLight,
+    subsDark: !!subsDark
+  });
 }
 
 // Image loading with proxy
@@ -73,13 +119,62 @@ async function loadImageWithProxy(imageUrl: string): Promise<HTMLImageElement> {
   });
 }
 
+// Simple template matching - compare pixels
+function compareImages(
+  img1Data: ImageData,
+  img2: HTMLImageElement,
+  threshold: number = 0.85
+): number {
+  // Create canvas for template
+  const canvas = document.createElement('canvas');
+  canvas.width = img2.width;
+  canvas.height = img2.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return 0;
+  
+  ctx.drawImage(img2, 0, 0);
+  const img2Data = ctx.getImageData(0, 0, img2.width, img2.height);
+  
+  // Calculate similarity
+  const width = Math.min(img1Data.width, img2.width);
+  const height = Math.min(img1Data.height, img2.height);
+  
+  let matchingPixels = 0;
+  let totalPixels = 0;
+  
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const idx1 = (y * img1Data.width + x) * 4;
+      const idx2 = (y * img2.width + x) * 4;
+      
+      const r1 = img1Data.data[idx1];
+      const g1 = img1Data.data[idx1 + 1];
+      const b1 = img1Data.data[idx1 + 2];
+      
+      const r2 = img2Data.data[idx2];
+      const g2 = img2Data.data[idx2 + 1];
+      const b2 = img2Data.data[idx2 + 2];
+      
+      // Calculate color distance
+      const distance = Math.sqrt(
+        Math.pow(r1 - r2, 2) +
+        Math.pow(g1 - g2, 2) +
+        Math.pow(b1 - b2, 2)
+      );
+      
+      // If colors are similar (within tolerance)
+      if (distance < 50) {
+        matchingPixels++;
+      }
+      totalPixels++;
+    }
+  }
+  
+  return totalPixels > 0 ? matchingPixels / totalPixels : 0;
+}
+
 // Detect if image contains YouTube player context
 function detectYouTubeContext(pixels: Uint8ClampedArray, width: number, height: number): boolean {
-  // YouTube player typically has specific characteristics:
-  // 1. Video frame area (center) has specific color patterns
-  // 2. Dark bars on sides in theater mode
-  // 3. Specific red color for YouTube logo/controls
-  
   let redPixels = 0;
   let darkCenterPixels = 0;
   let sampleSize = Math.min(width * height * 0.05, 2000);
@@ -119,7 +214,6 @@ function detectYouTubeContext(pixels: Uint8ClampedArray, width: number, height: 
   
   console.log("YouTube Context:", { hasRedHeader, hasVideoFrame, redPixels, darkCenterPixels });
   
-  // Valid if either red header OR video frame detected
   return hasRedHeader || hasVideoFrame;
 }
 
@@ -194,15 +288,23 @@ function isRed(color: { r: number; g: number; b: number }): boolean {
   return color.r > 180 && color.g < 80 && color.b < 80;
 }
 
-// Template matching using color patterns
-function analyzeLikeButtonTemplate(
+// Template matching for like button
+function analyzeLikeButton(
   pixels: Uint8ClampedArray, 
   width: number, 
   height: number, 
-  theme: 'light' | 'dark'
+  theme: 'light' | 'dark',
+  ctx: CanvasRenderingContext2D
 ): { detected: boolean; confidence: number; rgb?: { r: number; g: number; b: number } } {
   
   const region = getLikeRegion();
+  const x = Math.floor(region.x * width);
+  const y = Math.floor(region.y * height);
+  const w = Math.floor(region.w * width);
+  const h = Math.floor(region.h * height);
+  
+  // Get image data from region
+  const regionData = ctx.getImageData(x, y, w, h);
   const color = getAverageColor(pixels, width, height, region);
 
   if (!color) return { detected: false, confidence: 0 };
@@ -215,35 +317,54 @@ function analyzeLikeButtonTemplate(
     return { detected: false, confidence: 0.95, rgb: color };
   }
 
+  // Try template matching if templates are loaded
+  if (loadedTemplates) {
+    const template = theme === 'light' ? loadedTemplates.like.light : loadedTemplates.like.dark;
+    if (template) {
+      const matchScore = compareImages(regionData, template, TEMPLATE_THRESHOLD);
+      console.log("Like template match:", matchScore);
+      
+      if (matchScore >= TEMPLATE_THRESHOLD) {
+        return { detected: true, confidence: 0.95, rgb: color };
+      }
+    }
+  }
+
+  // Fallback: color-based detection
   let isActive = false;
   let confidence = 0;
 
   if (theme === 'light') {
-    // Light theme: Active = black/dark (low RGB)
     const likeAtivoClaro = color.r <= 65 + RGB_TOLERANCE && color.g <= 65 + RGB_TOLERANCE && color.b <= 65 + RGB_TOLERANCE;
     isActive = likeAtivoClaro;
-    confidence = isActive ? 0.9 : 0.15;
-    console.log("Like - Tema Claro:", { likeAtivoClaro, isActive });
+    confidence = isActive ? 0.8 : 0.15;
+    console.log("Like - Tema Claro (fallback):", { likeAtivoClaro, isActive });
   } else {
-    // Dark theme: Active = white/bright (high RGB)
     const likeAtivoEscuro = color.r >= 195 - RGB_TOLERANCE && color.g >= 195 - RGB_TOLERANCE && color.b >= 195 - RGB_TOLERANCE;
     isActive = likeAtivoEscuro;
-    confidence = isActive ? 0.9 : 0.15;
-    console.log("Like - Tema Escuro:", { likeAtivoEscuro, isActive });
+    confidence = isActive ? 0.8 : 0.15;
+    console.log("Like - Tema Escuro (fallback):", { likeAtivoEscuro, isActive });
   }
 
   return { detected: isActive, confidence, rgb: color };
 }
 
 // Template matching for subscribe button
-function analyzeSubscribeButtonTemplate(
+function analyzeSubscribeButton(
   pixels: Uint8ClampedArray, 
   width: number, 
   height: number, 
-  theme: 'light' | 'dark'
+  theme: 'light' | 'dark',
+  ctx: CanvasRenderingContext2D
 ): { detected: boolean; confidence: number; rgb?: { r: number; g: number; b: number } } {
   
   const region = getSubscribeRegion();
+  const x = Math.floor(region.x * width);
+  const y = Math.floor(region.y * height);
+  const w = Math.floor(region.w * width);
+  const h = Math.floor(region.h * height);
+  
+  const regionData = ctx.getImageData(x, y, w, h);
   const color = getAverageColor(pixels, width, height, region);
 
   if (!color) return { detected: false, confidence: 0 };
@@ -256,21 +377,33 @@ function analyzeSubscribeButtonTemplate(
     return { detected: false, confidence: 0.95, rgb: color };
   }
 
+  // Try template matching if templates are loaded
+  if (loadedTemplates) {
+    const template = theme === 'light' ? loadedTemplates.subscribe.light : loadedTemplates.subscribe.dark;
+    if (template) {
+      const matchScore = compareImages(regionData, template, TEMPLATE_THRESHOLD);
+      console.log("Subscribe template match:", matchScore);
+      
+      if (matchScore >= TEMPLATE_THRESHOLD) {
+        return { detected: true, confidence: 0.95, rgb: color };
+      }
+    }
+  }
+
+  // Fallback: color-based detection
   let isSubscribed = false;
   let confidence = 0;
 
   if (theme === 'light') {
-    // Light theme: Subscribed = white/bright
     const subscritoClaro = color.r >= 195 - RGB_TOLERANCE && color.g >= 195 - RGB_TOLERANCE && color.b >= 195 - RGB_TOLERANCE;
     isSubscribed = subscritoClaro;
-    confidence = isSubscribed ? 0.9 : 0.15;
-    console.log("Subscribe - Tema Claro:", { subscritoClaro, isSubscribed });
+    confidence = isSubscribed ? 0.8 : 0.15;
+    console.log("Subscribe - Tema Claro (fallback):", { subscritoClaro, isSubscribed });
   } else {
-    // Dark theme: Subscribed = black/dark
     const subscritoEscuro = color.r <= 65 + RGB_TOLERANCE && color.g <= 65 + RGB_TOLERANCE && color.b <= 65 + RGB_TOLERANCE;
     isSubscribed = subscritoEscuro;
-    confidence = isSubscribed ? 0.9 : 0.15;
-    console.log("Subscribe - Tema Escuro:", { subscritoEscuro, isSubscribed });
+    confidence = isSubscribed ? 0.8 : 0.15;
+    console.log("Subscribe - Tema Escuro (fallback):", { subscritoEscuro, isSubscribed });
   }
 
   return { detected: isSubscribed, confidence, rgb: color };
@@ -434,6 +567,9 @@ export async function analyzeVisualAntifraud(
   const debugInfo: string[] = [];
 
   try {
+    // Load templates first
+    await loadTemplates();
+    
     const img = await loadImageWithProxy(imageUrl);
 
     const canvas = document.createElement('canvas');
@@ -458,11 +594,11 @@ export async function analyzeVisualAntifraud(
     debugInfo.push(`Theme: ${themeResult.theme}`);
 
     // Step 3: Analyze like button (template matching)
-    const likeResult = analyzeLikeButtonTemplate(pixels, canvas.width, canvas.height, themeResult.theme);
+    const likeResult = analyzeLikeButton(pixels, canvas.width, canvas.height, themeResult.theme, ctx);
     debugInfo.push(`Like: ${likeResult.detected ? 'Active' : 'Inactive'}`);
 
     // Step 4: Analyze subscribe button (template matching)
-    const subscribeResult = analyzeSubscribeButtonTemplate(pixels, canvas.width, canvas.height, themeResult.theme);
+    const subscribeResult = analyzeSubscribeButton(pixels, canvas.width, canvas.height, themeResult.theme, ctx);
     debugInfo.push(`Subscribe: ${subscribeResult.detected ? 'Yes' : 'No'}`);
 
     // Step 5: OCR only runs if template detected
