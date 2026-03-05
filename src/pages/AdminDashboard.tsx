@@ -2257,6 +2257,7 @@ const AdminDashboard = () => {
                       <div>
                         <p className="font-semibold">{user.username || 'Sem nome'}</p>
                         <p className="text-sm text-muted-foreground">{user.email}</p>
+                        <p className="text-sm text-green-500 font-bold">Saldo: {parseFloat(user.balance || 0).toFixed(2)} Kz</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-4">

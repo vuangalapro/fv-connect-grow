@@ -568,8 +568,8 @@ const AffiliateDashboard = () => {
             <button
               key={item.id}
               onClick={() => {
-                // Block tasks and withdrawals for users with penalty_credit <= 20
-                if ((item.id === 'tasks' || item.id === 'withdrawals') && (profile.penaltyCredit ?? 100) <= 20) {
+                // Block tasks, withdrawals and wallet for users with penalty_credit <= 20
+                if ((item.id === 'tasks' || item.id === 'withdrawals' || item.id === 'wallet') && (profile.penaltyCredit ?? 100) <= 20) {
                   toast.error('Conta bloqueada! Não pode aceder a esta funcionalidade.');
                   return;
                 }
@@ -617,8 +617,8 @@ const AffiliateDashboard = () => {
           <button
             key={item.id}
             onClick={() => {
-              // Block tasks and withdrawals for users with penalty_credit <= 20
-              if ((item.id === 'tasks' || item.id === 'withdrawals') && (profile.penaltyCredit ?? 100) <= 20) {
+              // Block tasks, withdrawals and wallet for users with penalty_credit <= 20
+              if ((item.id === 'tasks' || item.id === 'withdrawals' || item.id === 'wallet') && (profile.penaltyCredit ?? 100) <= 20) {
                 toast.error('Conta bloqueada! Não pode aceder a esta funcionalidade.');
                 return;
               }
