@@ -410,7 +410,7 @@ const AdminDashboard = () => {
         // 6b. Analyze screenshot using template matching for like/subscribe detection
         try {
           let imageUrl: string;
-          
+
           // Check if screenshot_url is already a full URL or just a path
           if (sub.screenshot_url.startsWith('http')) {
             imageUrl = sub.screenshot_url;
@@ -535,16 +535,8 @@ const AdminDashboard = () => {
       // Show result to admin with clear status
       toast.info(getStatusText(result.status));
 
-      // AUTO-APPROVE if visual analysis shows CONFIRMADO (like + sub detected)
-      if (result.status === 'CONFIRMADO') {
-        // Update the fraud_alert to confiavel automatically
-        await supabase
-          .from('task_submissions')
-          .update({ fraud_alert: 'confiavel' })
-          .eq('id', sub.id);
-
-        toast.success('✅ Análise visual confirmou: Like e Inscrição detetados!');
-      }
+      // Note: The fraud_alert is already updated by analyzeTask function
+      // This function only provides visual analysis details for display
     } catch (error) {
       console.error('Visual Analysis Error:', error);
       toast.error('Erro ao analisar captura de ecrã');
