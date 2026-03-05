@@ -66,7 +66,7 @@ function detectTheme(pixels: Uint8ClampedArray, width: number, height: number): 
 }
 
 // Get average color in region
-function getAverageColor(pixels: Uint8ClampedArray, width: number, region: { x: number; y: number; w: number; h: number }): { r: number; g: number; b: number } | null {
+function getAverageColor(pixels: Uint8ClampedArray, width: number, height: number, region: { x: number; y: number; w: number; h: number }): { r: number; g: number; b: number } | null {
   const startX = Math.floor(region.x * width);
   const startY = Math.floor(region.y * height);
   const w = Math.floor(region.w * width);
@@ -108,7 +108,7 @@ function isRed(color: { r: number; g: number; b: number }): boolean {
 // Analyze like button with fuzzy matching
 function analyzeLikeButton(pixels: Uint8ClampedArray, width: number, height: number, theme: 'light' | 'dark'): { detected: boolean; confidence: number; rgb?: { r: number; g: number; b: number } } {
   const region = LIKE_REGION;
-  const color = getAverageColor(pixels, width, region);
+  const color = getAverageColor(pixels, width, height, region);
   
   if (!color) return { detected: false, confidence: 0 };
   
