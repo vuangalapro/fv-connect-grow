@@ -2,32 +2,20 @@
 -- Run this in Supabase SQL Editor
 
 -- ============================================
--- FIX 1: Disable RLS temporarily to test (or create proper policies)
--- ============================================
-
--- Disable RLS on problematic tables (if needed for testing)
--- ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
--- ALTER TABLE task_submissions DISABLE ROW LEVEL SECURITY;
--- ALTER TABLE support_messages DISABLE ROW LEVEL SECURITY;
--- ALTER TABLE ads DISABLE ROW LEVEL SECURITY;
-
--- ============================================
--- FIX 2: Create proper RLS policies for profiles
+-- FIX 1: Create proper RLS policies for profiles
 -- ============================================
 
 -- Drop existing policies if they exist
 DROP POLICY IF EXISTS "Users can view all profiles" ON profiles;
-DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
 DROP POLICY IF EXISTS "Users can insert own profile" ON profiles;
 DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
-DROP POLICY IF EXISTS "Admins can do everything" ON profiles;
+DROP POLICY IF EXISTS "Admins can do everything profiles" ON profiles;
 
 -- Allow authenticated users to read all profiles
 CREATE POLICY "Users can view all profiles" ON profiles
   FOR SELECT
   TO authenticated
-  USING (true)
-  WITH CHECK (true);
+  USING (true);
 
 -- Allow users to insert their own profile
 CREATE POLICY "Users can insert own profile" ON profiles
@@ -43,7 +31,7 @@ CREATE POLICY "Users can update own profile" ON profiles
   WITH CHECK (auth.uid() = id);
 
 -- Allow admins to do everything
-CREATE POLICY "Admins can do everything" ON profiles
+CREATE POLICY "Admins can do everything profiles" ON profiles
   FOR ALL
   TO authenticated
   USING (
@@ -54,7 +42,7 @@ CREATE POLICY "Admins can do everything" ON profiles
   );
 
 -- ============================================
--- FIX 3: Create RLS policies for task_submissions
+-- FIX 2: Create RLS policies for task_submissions
 -- ============================================
 
 DROP POLICY IF EXISTS "Users can view all submissions" ON task_submissions;
@@ -63,7 +51,7 @@ DROP POLICY IF EXISTS "Users can update own submissions" ON task_submissions;
 DROP POLICY IF EXISTS "Admins can do everything submissions" ON task_submissions;
 
 CREATE POLICY "Users can view all submissions" ON task_submissions
-  FOR SELECT TO authenticated USING (true) WITH CHECK (true);
+  FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY "Users can insert submissions" ON task_submissions
   FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
@@ -77,7 +65,7 @@ CREATE POLICY "Admins can do everything submissions" ON task_submissions
   WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true));
 
 -- ============================================
--- FIX 4: Create RLS policies for support_messages
+-- FIX 3: Create RLS policies for support_messages
 -- ============================================
 
 DROP POLICY IF EXISTS "Users can view own messages" ON support_messages;
@@ -85,7 +73,7 @@ DROP POLICY IF EXISTS "Users can insert messages" ON support_messages;
 DROP POLICY IF EXISTS "Admins can do everything messages" ON support_messages;
 
 CREATE POLICY "Users can view own messages" ON support_messages
-  FOR SELECT TO authenticated USING (user_id = auth.uid()) WITH CHECK (true);
+  FOR SELECT TO authenticated USING (user_id = auth.uid());
 
 CREATE POLICY "Users can insert messages" ON support_messages
   FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
@@ -96,14 +84,14 @@ CREATE POLICY "Admins can do everything messages" ON support_messages
   WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true));
 
 -- ============================================
--- FIX 5: Create RLS policies for ads
+-- FIX 4: Create RLS policies for ads
 -- ============================================
 
 DROP POLICY IF EXISTS "Users can view ads" ON ads;
 DROP POLICY IF EXISTS "Admins can do everything ads" ON ads;
 
 CREATE POLICY "Users can view ads" ON ads
-  FOR SELECT TO authenticated USING (true) WITH CHECK (true);
+  FOR SELECT TO authenticated USING (true);
 
 CREATE POLICY "Admins can do everything ads" ON ads
   FOR ALL TO authenticated
@@ -111,17 +99,13 @@ CREATE POLICY "Admins can do everything ads" ON ads
   WITH CHECK (EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND is_admin = true));
 
 -- ============================================
--- FIX 6: Enable RLS on all tables if not enabled
+-- FIX 5: Enable RLS on all tables if not enabled
 -- ============================================
 
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE task_submissions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE support_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE ads ENABLE ROW LEVEL SECURITY;
-
--- ============================================
--- FIX 7: Check for any errors in tables
--- ============================================
 
 -- Verify tables exist and have correct structure
 SELECT table_name, column_name, data_type, is_nullable, column_default
