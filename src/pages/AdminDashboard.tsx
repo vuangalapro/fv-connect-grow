@@ -399,7 +399,32 @@ const AdminDashboard = () => {
         details.push(`⚠️ Sem captura de ecrã carregada`);
       }
 
-      // 7. Check for existing fraud alerts on user's submissions
+      // 7. Include visual analysis result as positive factor
+      const visualResult = visualAnalysisResults[sub.id];
+      if (visualResult) {
+        if (visualResult.status === 'CONFIRMADO') {
+          // Visual analysis confirms like and subscribe - reduce risk score
+          riskScore = Math.max(0, riskScore - 40);
+          details.push('✅ Análise visual: CONFIRMADO (Like + Inscrito)');
+        } else if (visualResult.status === 'PROVAVEL') {
+          // Partial confirmation - reduce risk slightly
+          riskScore = Math.max(0, riskScore - 20);
+          details.push('⚠️ Análise visual: PROVÁVEL');
+        } else if (visualResult.status === 'SUSPEITO') {
+          // Visual analysis indicates suspicious - add to risk
+          riskScore += 20;
+          details.push('❌ Análise visual: SUSPEITO');
+        } else if (visualResult.status === 'INCONCLUSIVO') {
+          // No visual analysis available
+          riskScore += 10;
+          details.push('⚠️ Análise visual: INCONCLUSIVO');
+        }
+      } else {
+        // No visual analysis done yet
+        details.push('ℹ️ Análise visual: Não executada');
+      }
+
+      // 8. Check for existing fraud alerts on user's submissions
       const userFraudAlerts = allSubmissions?.filter(
         s => s.user_id === sub.user_id && s.fraud_alert === 'suspeita'
       ) || [];
@@ -1573,20 +1598,20 @@ const AdminDashboard = () => {
                 onClick={async () => {
                   // Close user detail panel first
                   setSelectedUser(null);
-                  // Fetch users with penalty_credit < 10
+                  // Fetch users with penalty_credit < 20
                   const { data: allProfiles } = await supabase
                     .from('profiles')
                     .select('*')
                     .order('penalty_credit', { ascending: true });
                   
-                  const blocked = (allProfiles || []).filter(p => (p.penalty_credit || 100) < 10);
+                  const blocked = (allProfiles || []).filter(p => (p.penalty_credit || 100) < 20);
                   setBlockedUsers(blocked);
                   setShowBlockedPanel(true);
                 }}
                 className="gap-2"
               >
                 <Ban size={16} />
-                Lista de Bloqueios ({users.filter(u => (u.penalty_credit || 100) < 10).length})
+                Lista de Bloqueios ({users.filter(u => (u.penalty_credit || 100) < 20).length})
               </Button>
             </div>
             <div className="space-y-2">
@@ -1655,7 +1680,7 @@ const AdminDashboard = () => {
                     .from('profiles')
                     .select('*')
                     .order('penalty_credit', { ascending: true });
-                  const blocked = (allProfiles || []).filter(p => (p.penalty_credit || 100) < 10);
+                  const blocked = (allProfiles || []).filter(p => (p.penalty_credit || 100) < 20);
                   setBlockedUsers(blocked);
                   toast.success('Lista atualizada');
                 }}
@@ -1680,14 +1705,14 @@ const AdminDashboard = () => {
                         <div className="w-24 h-2 bg-red-500/20 rounded-full overflow-hidden">
                           <div 
                             className="h-full bg-red-500 rounded-full" 
-                            style={{ width: `${Math.min(100, ((u.penalty_credit || 0) / 10) * 100)}%` }}
+                            style={{ width: `${Math.min(100, ((u.penalty_credit || 0) / 20) * 100)}%` }}
                           />
                         </div>
                         <span className="text-sm font-bold text-red-500">{u.penalty_credit || 0}</span>
                       </div>
                     </div>
                     <div className="flex flex-col gap-2">
-                      {(u.penalty_credit || 0) > 0 ? (
+                      {(u.penalty_credit || 0) >= 20 ? (
                         <Button
                           variant="destructive"
                           size="sm"
@@ -1863,12 +1888,9 @@ const AdminDashboard = () => {
                     </div>
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-xs font-bold whitespace-nowrap text-yellow-500">Créditos Penalidade:</span>
-                      <Input
-                        type="number"
-                        value={selectedUser.penalty_credit || 100}
-                        onChange={e => setSelectedUser({ ...selectedUser, penalty_credit: parseInt(e.target.value) || 0 })}
-                        className="bg-secondary/30 h-8 font-bold text-yellow-500 w-20"
-                      />
+                      <span className="bg-secondary/30 h-8 px-3 flex items-center font-bold text-yellow-500 rounded-md">
+                        {selectedUser.penalty_credit ?? 100}
+                      </span>
                     </div>
                   </div>
                 </div>
