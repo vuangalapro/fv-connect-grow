@@ -6,7 +6,7 @@
  */
 
 // Status type
-export type FraudStatus = 'CONFIRMADO' | 'PROVAVEL' | 'INCONCLUSIVO' | 'SUSPEITO';
+export type FraudStatus = 'CONFIRMADO' | 'PROVAVEL' | 'INCONCLUSIVO' | 'SUSPEITO' | 'REJEITADO';
 
 export interface VisualAnalysisResult {
   status: FraudStatus;
@@ -41,7 +41,8 @@ export function getStatusText(status: FraudStatus): string {
     'CONFIRMADO': '✅ CONFIRMADO',
     'PROVAVEL': '⚠️ PROVÁVEL',
     'INCONCLUSIVO': '❓ INCONCLUSIVO',
-    'SUSPEITO': '❌ SUSPEITO'
+    'SUSPEITO': '❌ SUSPEITO',
+    'REJEITADO': '❌ REJEITADO'
   };
   return statusTexts[status];
 }
@@ -514,10 +515,14 @@ function calculateDecision(
     visualScore += likeScore;
   }
 
-  // Subscribe: Template OR OCR is sufficient (not AND)
-  // OCR never penalizes - if template detected OR OCR detected, give full 50%
-  if (subscribeDetected || textDetected) {
+  // Subscribe: needs BOTH template AND OCR for full 50%
+  // This is stricter - both methods must confirm
+  if (subscribeTemplateDetected && textDetected) {
     subscribeScore = 50;
+    visualScore += subscribeScore;
+  } else if (subscribeTemplateDetected || textDetected) {
+    // Only one method detected - partial score
+    subscribeScore = 25;
     visualScore += subscribeScore;
   }
 
@@ -527,22 +532,23 @@ function calculateDecision(
   // Calculate confidence
   const confidence = visualScore / 100;
 
-  // Determine status - more lenient thresholds
+  // Determine status - STRICT thresholds as requested
   let status: VisualAnalysisResult['status'];
 
-  // If we have ANY positive signal, always at least PROVAVEL
-  if (likeDetected && subscribeDetected) {
+  if (visualScore >= 100) {
+    // Both like AND subscribe (full) detected
     status = 'CONFIRMADO';
-  } else if (likeDetected || subscribeDetected || textDetected) {
-    // Even with 0 score, if we detected something, give PROVAVEL
-    status = 'PROVAVEL';
-  } else {
+  } else if (visualScore >= 50) {
+    // Partial detection - like OR subscribe detected
     status = 'SUSPEITO';
+  } else {
+    // No clear detection
+    status = 'REJEITADO';
   }
 
-  // If context was invalid but we have any visual detection, upgrade
-  if (contextPenalty && (likeDetected || subscribeDetected) && status === 'SUSPEITO') {
-    status = 'PROVAVEL';
+  // If context was invalid and we have low score, still reject
+  if (contextPenalty && visualScore < 50) {
+    status = 'REJEITADO';
   }
 
   console.log("Decision:", {
