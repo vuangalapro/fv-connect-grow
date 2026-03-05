@@ -406,6 +406,42 @@ const AdminDashboard = () => {
       if (!sub.screenshot_url) {
         riskScore += 15;
         details.push(`⚠️ Sem captura de ecrã carregada`);
+      } else {
+        // 6b. Analyze screenshot for like and subscribe detection
+        try {
+          let imageUrl = sub.screenshot_url;
+          if (sub.screenshot_url.startsWith('data:')) {
+            imageUrl = sub.screenshot_url;
+          } else if (sub.screenshot_url.startsWith('http')) {
+            imageUrl = sub.screenshot_url;
+          } else {
+            imageUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/screenshots/${sub.screenshot_url}`;
+          }
+
+          const visualResult = await analyzeVisualAntifraud(imageUrl);
+
+          // Store visual analysis result
+          setVisualAnalysisResults(prev => ({
+            ...prev,
+            [sub.id]: visualResult,
+          }));
+
+          // If visual analysis confirms like + sub, significantly reduce risk
+          if (visualResult.status === 'CONFIRMADO') {
+            riskScore = Math.max(0, riskScore - 50); // Reduce risk score by 50 points
+            details.push(`✅ Análise visual confirmou: Like e Inscrição detetados!`);
+            toast.success('✅ Like e Inscrição detetados na captura de ecrã!');
+          } else if (visualResult.status === 'PROVAVEL') {
+            riskScore = Math.max(0, riskScore - 25); // Reduce risk score by 25 points
+            details.push(`⚠️ Análise visual parcial: Alguns elementos detetados`);
+          } else if (visualResult.status === 'SUSPEITO') {
+            riskScore += 15;
+            details.push(`⚠️ Análise visual suspeita: Padrão não reconhecido`);
+          }
+        } catch (visualError) {
+          console.error('Visual analysis error:', visualError);
+          details.push(`⚠️ Erro na análise visual - a verificar manualmente`);
+        }
       }
 
       // 7. Check for existing fraud alerts on user's submissions
@@ -1623,7 +1659,6 @@ const AdminDashboard = () => {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-primary">Saldo: {parseFloat(u.balance || 0).toFixed(2)} Kz</p>
-                      <p className={`text-sm font-bold ${(u.penalty_credit || 100) <= 20 ? 'text-red-500' : (u.penalty_credit || 100) <= 50 ? 'text-yellow-500' : 'text-green-500'}`}>Penalidade: {u.penalty_credit ?? 100}</p>
                     </div>
                   </div>
 

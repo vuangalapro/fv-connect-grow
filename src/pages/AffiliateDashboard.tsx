@@ -60,6 +60,7 @@ const AffiliateDashboard = () => {
   const [balance, setBalance] = useState(0);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawals, setWithdrawals] = useState<any[]>([]);
+  const [pendingWithdrawalsCount, setPendingWithdrawalsCount] = useState(0);
   const [supportForm, setSupportForm] = useState({ subject: '', message: '' });
   const [myMessages, setMyMessages] = useState<any[]>([]);
   const [selectedMessage, setSelectedMessage] = useState<any | null>(null);
@@ -160,7 +161,12 @@ const AffiliateDashboard = () => {
         .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (withdrawalsData) setWithdrawals(withdrawalsData);
+      if (withdrawalsData) {
+        setWithdrawals(withdrawalsData);
+        // Filter only pending withdrawals for the badge count
+        const pendingCount = withdrawalsData.filter((w: any) => w.status === 'pending').length;
+        setPendingWithdrawalsCount(pendingCount);
+      }
 
       // 5. Opened Tasks
       const { data: openedData } = await supabase
@@ -594,8 +600,8 @@ const AffiliateDashboard = () => {
               {item.id === 'wallet' && (
                 <span className="text-xs text-green-400 font-bold">{balance.toFixed(0)}</span>
               )}
-              {item.id === 'withdrawals' && withdrawals.length > 0 && (
-                <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{withdrawals.length}</span>
+              {item.id === 'withdrawals' && pendingWithdrawalsCount > 0 && (
+                <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{pendingWithdrawalsCount}</span>
               )}
               {item.id === 'support' && unreadRepliesCount > 0 && (
                 <span className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{unreadRepliesCount}</span>
@@ -652,8 +658,8 @@ const AffiliateDashboard = () => {
             {item.id === 'wallet' && (
               <span className="text-xs text-green-400 font-bold ml-auto">{balance.toFixed(0)}</span>
             )}
-            {item.id === 'withdrawals' && withdrawals.length > 0 && (
-              <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-auto">{withdrawals.length}</span>
+            {item.id === 'withdrawals' && pendingWithdrawalsCount > 0 && (
+              <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-auto">{pendingWithdrawalsCount}</span>
             )}
             {item.id === 'support' && unreadRepliesCount > 0 && (
               <span className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-auto">{unreadRepliesCount}</span>

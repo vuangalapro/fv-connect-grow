@@ -311,12 +311,12 @@ export default function VideoTaskPlayer({
 
   // Effect to set canSubmit only when BOTH video is completed AND YouTube was opened AND timer is done
   useEffect(() => {
-    if (isVideoCompleted && hasOpenedYouTube && timeRemaining === 0) {
+    if (isVideoCompleted && hasOpenedYouTube) {
       setCanSubmit(true);
     } else {
       setCanSubmit(false);
     }
-  }, [isVideoCompleted, hasOpenedYouTube, timeRemaining]);
+  }, [isVideoCompleted, hasOpenedYouTube]);
 
   useEffect(() => {
     if (isOpen && taskId && userId) {
@@ -605,24 +605,6 @@ export default function VideoTaskPlayer({
             {/* Instructions - Show after video is completed */}
             {isVideoCompleted && (
               <div className="mt-4 space-y-4">
-                {/* Timer countdown */}
-                {timeRemaining > 0 && (
-                  <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center justify-center gap-2">
-                    <Loader2 size={16} className="animate-spin text-blue-400" />
-                    <span className="text-sm text-blue-300">
-                      Aguarde <strong>{timeRemaining}s</strong> antes de enviar
-                    </span>
-                  </div>
-                )}
-                {timeRemaining === 0 && (
-                  <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl flex items-center justify-center gap-2">
-                    <Check size={16} className="text-green-400" />
-                    <span className="text-sm text-green-300">
-                      Pronto! Pode enviar a prova
-                    </span>
-                  </div>
-                )}
-
                 {/* Instructions */}
                 <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
                   <p className="text-sm text-blue-300 font-bold mb-3 flex items-center gap-2">
