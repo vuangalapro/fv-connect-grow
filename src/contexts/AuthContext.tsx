@@ -8,6 +8,8 @@ interface AppUser {
   full_name: string | null;
   is_admin: boolean;
   balance: number;
+  penalty_credit: number;
+  is_banned: boolean;
 }
 
 interface AuthContextType {
@@ -17,6 +19,7 @@ interface AuthContextType {
   register: (email: string, password: string, fullName: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  isBlocked: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -37,6 +40,8 @@ function buildUserFromSession(supabaseUser: SupabaseUser): AppUser {
     full_name: supabaseUser.user_metadata?.full_name || null,
     is_admin: supabaseUser.email === ADMIN_EMAIL,
     balance: 0,
+    penalty_credit: 100,
+    is_banned: false,
   };
 }
 
@@ -51,7 +56,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, is_admin, balance')
+        .select('id, full_name, is_admin, balance, penalty_credit, is_banned')
         .eq('id', supabaseUser.id)
         .single();
 
@@ -63,6 +68,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           full_name: data.full_name,
           is_admin: data.is_admin || supabaseUser.email === ADMIN_EMAIL,
           balance: parseFloat(data.balance || 0),
+          penalty_credit: data.penalty_credit ?? 100,
+          is_banned: data.is_banned || false,
         });
         console.log('[Auth] Profile loaded successfully.');
         return;
@@ -85,7 +92,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           is_admin: supabaseUser.email === ADMIN_EMAIL,
           balance: 0,
         }, { onConflict: 'id' })
-        .select('id, full_name, is_admin, balance')
+        .select('id, full_name, is_admin, balance, penalty_credit, is_banned')
         .single();
 
       if (created) {
@@ -95,6 +102,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           full_name: created.full_name,
           is_admin: created.is_admin || supabaseUser.email === ADMIN_EMAIL,
           balance: parseFloat(created.balance || 0),
+          penalty_credit: created.penalty_credit ?? 100,
+          is_banned: created.is_banned || false,
         });
       }
     } catch (err) {
@@ -184,8 +193,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     setUser(null);
   };
 
+  const isBlocked = user ? (user.penalty_credit <= 20 || user.is_banned) : false;
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshProfile }}>
+    <AuthContext.Provider value={{ user, loading, login, register, logout, refreshProfile, isBlocked }}>
       {children}
     </AuthContext.Provider>
   );

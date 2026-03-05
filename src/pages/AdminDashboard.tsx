@@ -1,17 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle, Loader2, RefreshCw, Youtube } from 'lucide-react';
+import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle, Loader2, RefreshCw, Youtube, Ban, Unlock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { analyzeVisualAntifraud, getStatusText, VisualAnalysisResult } from '@/lib/visualAntifraud';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
-type Panel = 'users' | 'tasks' | 'ads' | 'newTasks' | 'withdrawals' | 'messages' | null;
+type Panel = 'users' | 'tasks' | 'ads' | 'newTasks' | 'withdrawals' | 'messages' | 'blocked' | null;
 
 // Modern color palette for charts
 const COLORS = {
@@ -115,6 +116,8 @@ const AdminDashboard = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [adSearchQuery, setAdSearchQuery] = useState('');
+  const [showBlockedPanel, setShowBlockedPanel] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [processingOCR, setProcessingOCR] = useState<Record<string, boolean>>({});
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -313,6 +316,13 @@ const AdminDashboard = () => {
             expires_at: t.expires_at
           })));
         }
+      } else if (panel === 'blocked') {
+        const { data: allProfiles } = await supabase
+          .from('profiles')
+          .select('*')
+          .order('penalty_credit', { ascending: true });
+        const blocked = (allProfiles || []).filter(p => (p.penalty_credit || 100) <= 20);
+        setBlockedUsers(blocked);
       }
     } catch (error) {
       console.error('Error fetching admin data:', error);
@@ -484,6 +494,17 @@ const AdminDashboard = () => {
 
       // Show result to admin with clear status
       toast.info(getStatusText(result.status));
+
+      // AUTO-APPROVE if visual analysis shows CONFIRMADO (like + sub detected)
+      if (result.status === 'CONFIRMADO') {
+        // Update the fraud_alert to confiavel automatically
+        await supabase
+          .from('task_submissions')
+          .update({ fraud_alert: 'confiavel' })
+          .eq('id', sub.id);
+
+        toast.success('✅ Análise visual confirmou: Like e Inscrição detetados!');
+      }
     } catch (error) {
       console.error('Visual Analysis Error:', error);
       toast.error('Erro ao analisar captura de ecrã');
@@ -800,7 +821,7 @@ const AdminDashboard = () => {
       await supabase.from('visual_analysis_audit').delete().eq('task_id', taskId);
       await supabase.from('video_clicks').delete().eq('task_id', taskId);
       await supabase.from('task_submissions').delete().eq('task_id', taskId);
-      
+
       // Then delete the task
       const { error } = await supabase.from('tasks').delete().eq('id', taskId);
       if (error) throw error;
@@ -1025,6 +1046,7 @@ const AdminDashboard = () => {
     { id: 'ads' as Panel, label: 'Publicidades', icon: Megaphone },
     { id: 'newTasks' as Panel, label: 'Novas Tarefas', icon: PlusCircle },
     { id: 'withdrawals' as Panel, label: 'Ordem de Saque', icon: Banknote },
+    { id: 'blocked' as Panel, label: 'Lista Negra', icon: Ban },
   ];
 
   return (
@@ -1600,6 +1622,12 @@ const AdminDashboard = () => {
                       <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Tarefas Hoje</p>
                       <p className="text-xs font-medium">{u.completed_tasks || 0}/{u.total_tasks || 0} <span className="text-muted-foreground">(pend: {u.pending_tasks || 0})</span></p>
                     </div>
+                    <div>
+                      <p className="text-[10px] uppercase tracking-wider text-muted-foreground">Créditos Penalidade</p>
+                      <p className={`text-xs font-medium ${(u.penalty_credit || 100) <= 20 ? 'text-red-500' : (u.penalty_credit || 100) <= 50 ? 'text-yellow-500' : 'text-green-500'}`}>
+                        {u.penalty_credit ?? 100}
+                      </p>
+                    </div>
                   </div>
                 </button>
               ))}
@@ -1718,6 +1746,24 @@ const AdminDashboard = () => {
                         onChange={e => setSelectedUser({ ...selectedUser, penalty_credit: parseInt(e.target.value) || 0 })}
                         className="bg-secondary/30 h-8 font-bold text-yellow-500 w-20"
                       />
+                    </div>
+                    <div className="mt-2">
+                      <div className="flex justify-between text-xs mb-1">
+                        <span className="text-muted-foreground">Progresso</span>
+                        <span className={(selectedUser.penalty_credit || 100) <= 20 ? 'text-red-500 font-bold' : (selectedUser.penalty_credit || 100) <= 50 ? 'text-yellow-500 font-bold' : 'text-green-500 font-bold'}>
+                          {selectedUser.penalty_credit || 100} / 100
+                        </span>
+                      </div>
+                      <Progress
+                        value={selectedUser.penalty_credit || 100}
+                        className="h-2"
+                        style={{
+                          backgroundColor: '#374151',
+                        }}
+                      />
+                      {(selectedUser.penalty_credit || 100) <= 20 && (
+                        <p className="text-xs text-red-500 mt-1">⚠️ Utilizador bloqueado - crédito baixo</p>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -1897,7 +1943,7 @@ const AdminDashboard = () => {
                             const displayDetails = displayStatus === 'INCONCLUSIVO' && (result?.details as any)?.error_message
                               ? (result.details as any).error_message
                               : `Like: ${result?.like_detected ? '✅' : '❌'} | Sub: ${result?.subscribe_detected ? '✅' : '❌'} | Confiança: ${Math.round((result?.confidence || 0) * 100)}%`;
-                            
+
                             return (
                               <div className={`text-xs p-2 rounded-lg mb-1 ${displayColor}`}>
                                 <p className="font-bold">{displayLabel}</p>
@@ -2168,6 +2214,93 @@ const AdminDashboard = () => {
           </div>
         )}
 
+        {/* BLOCKED USERS */}
+        {panel === 'blocked' && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                <ArrowLeft size={16} /> Voltar
+              </button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  setIsRefreshing(true);
+                  await fetchData();
+                  setIsRefreshing(false);
+                }}
+                disabled={isRefreshing}
+                className="gap-2"
+              >
+                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                Atualizar
+              </Button>
+            </div>
+            <h2 className="text-2xl font-bold mb-2 font-display">Lista de Bloqueios</h2>
+            <p className="text-muted-foreground mb-6">Utilizadores com crédito de penalidade igual ou inferior a 20.</p>
+
+            {blockedUsers.length === 0 ? (
+              <div className="text-center py-12">
+                <Ban size={48} className="mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">Nenhum utilizador bloqueado</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {blockedUsers.map(user => (
+                  <div key={user.id} className="glass rounded-xl p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
+                        <span className="text-red-600 dark:text-red-400 font-bold text-lg">
+                          {(user.username || user.email || 'U').charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="font-semibold">{user.username || 'Sem nome'}</p>
+                        <p className="text-sm text-muted-foreground">{user.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="w-48">
+                        <div className="flex justify-between text-sm mb-1">
+                          <span className="text-muted-foreground">Crédito de Penalidade</span>
+                          <span className={user.penalty_credit <= 20 ? 'text-red-500 font-bold' : 'text-foreground'}>
+                            {user.penalty_credit || 0} / 100
+                          </span>
+                        </div>
+                        <Progress value={user.penalty_credit || 100} className="h-2" />
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            await supabase.from('profiles').update({ penalty_credit: 100 }).eq('id', user.id);
+                            fetchData();
+                          }}
+                        >
+                          <Unlock size={14} className="mr-1" /> Desbloquear
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={async () => {
+                            if (confirm('Tem certeza que deseja banir PERMANENTEMENTE este utilizador? Esta ação não pode ser desfeita e o utilizador será eliminado completamente!')) {
+                              await handleDeleteUser(user);
+                              fetchData();
+                            }
+                          }}
+                        >
+                          <Ban size={14} className="mr-1" /> Banir
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* NEW TASKS */}
         {panel === 'newTasks' && (
           <div>
@@ -2404,17 +2537,17 @@ const AdminDashboard = () => {
                   className="max-w-[90vw] max-h-[85vh] object-contain shadow-2xl rounded-lg"
                 />
               ) : previewFile.data.startsWith('data:video/') || previewFile.data.includes('youtube.com/embed') || previewFile.data.includes('player.vimeo') || previewFile.data.match(/\.(mp4|webm|ogg)$/i) ? (
-                <video 
-                  src={previewFile.data} 
-                  controls 
+                <video
+                  src={previewFile.data}
+                  controls
                   className="max-w-[90vw] max-h-[85vh] rounded-lg"
                   autoPlay={false}
                 />
               ) : (
-                <iframe 
-                  src={previewFile.data} 
-                  title="Document Preview" 
-                  className="w-full h-full min-h-[500px] rounded-lg bg-white" 
+                <iframe
+                  src={previewFile.data}
+                  title="Document Preview"
+                  className="w-full h-full min-h-[500px] rounded-lg bg-white"
                 />
               )}
             </div>

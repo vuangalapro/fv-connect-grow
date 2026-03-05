@@ -41,7 +41,7 @@ const menuItems: { id: Panel; label: string; icon: any }[] = [
 ];
 
 const AffiliateDashboard = () => {
-  const { user, loading, logout, refreshProfile } = useAuth();
+  const { user, loading, logout, refreshProfile, isBlocked } = useAuth();
   const { showRulesOnDemand } = useRuleAcceptance();
   const { setSwitchToReviewsCallback } = useVideoTask();
   const navigate = useNavigate();
@@ -248,6 +248,39 @@ const AffiliateDashboard = () => {
     );
   }
 
+  // Blocked user screen
+  if (isBlocked && user && !user.is_admin) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="max-w-md w-full text-center">
+          <div className="w-20 h-20 bg-red-100 dark:bg-red-900 rounded-full flex items-center justify-center mx-auto mb-6">
+            <svg xmlns="http://www.w3.org/2000/svg" className="w-10 h-10 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+            </svg>
+          </div>
+          <h1 className="text-2xl font-bold text-foreground mb-2">Conta Bloqueada</h1>
+          <p className="text-muted-foreground mb-6">
+            A sua conta foi temporariamente bloqueada devido aviolações das regras da plataforma.
+            Contacte o suporte para mais informações.
+          </p>
+          <div className="bg-muted rounded-lg p-4 mb-6">
+            <p className="text-sm text-muted-foreground mb-2">Motivo do bloqueio:</p>
+            <p className="font-medium text-foreground">Crédito de penalidade insuficiente</p>
+            <p className="text-sm text-muted-foreground mt-2">
+              O seu crédito de penalidade está abaixo de 20 pontos.
+            </p>
+          </div>
+          <Button
+            onClick={() => window.location.href = '/support'}
+            className="w-full"
+          >
+            Contactar Suporte
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const saveProfile = async () => {
     if (!user) return;
     const { error } = await supabase
@@ -383,6 +416,19 @@ const AffiliateDashboard = () => {
     if (amount > balance) { toast.error('Saldo insuficiente'); return; }
     if (!profile.bankAccount) { toast.error('Registe sua conta bancária no Meu Perfil'); return; }
 
+    // Check if user is blocked
+    if (isBlocked && !user.is_admin) {
+      toast.error('A sua conta está bloqueada. Contacte o suporte.');
+      return;
+    }
+
+    // Minimum withdrawal of 5000 KZ
+    const MIN_WITHDRAWAL = 5000;
+    if (amount < MIN_WITHDRAWAL) {
+      toast.error(`O valor mínimo para saque é ${MIN_WITHDRAWAL} KZ`);
+      return;
+    }
+
     try {
       // Use atomic RPC to deduct balance (prevents race conditions)
       const { data: success, error: rpcError } = await supabase.rpc('atomic_balance_deduct', {
@@ -491,11 +537,13 @@ const AffiliateDashboard = () => {
   if (!user) return null;
 
   // Filter out completed (approved), pending, rejected tasks AND expired tasks so they don't show in available tasks
+  // Also hide tasks from blocked users
   const availableTasks = tasks.filter(t =>
     isTaskValid(t.expires_at) &&
     !completedTasks.includes(t.id) &&
     !pendingTasks.includes(t.id) &&
-    !rejectedTasks.includes(t.id)
+    !rejectedTasks.includes(t.id) &&
+    (!isBlocked || user?.is_admin)
   );
 
   return (
@@ -1106,11 +1154,37 @@ const AffiliateDashboard = () => {
               <ArrowLeft size={16} /> Voltar
             </button>
             <h2 className="text-2xl font-bold mb-6 font-display">Minha Carteira</h2>
+
+            {/* Warning for blocked users */}
+            {isBlocked && !user?.is_admin && (
+              <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-4 max-w-lg">
+                <div className="flex items-center gap-2 text-red-500 font-medium mb-2">
+                  <AlertTriangle size={18} />
+                  Conta Bloqueada
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  A sua conta está temporariamente bloqueada. Não pode realizar saques.
+                </p>
+              </div>
+            )}
+
             <div className="grid gap-4 max-w-lg">
               <div className="glass rounded-2xl p-6">
                 <p className="text-sm text-muted-foreground">Saldo Disponível</p>
                 <p className="text-4xl font-bold text-gradient-primary mt-1 font-display">{balance.toFixed(2)} Kz</p>
               </div>
+
+              {/* Minimum withdrawal warning */}
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+                <div className="flex items-center gap-2 text-amber-500 font-medium mb-1">
+                  <AlertTriangle size={16} />
+                  Valor Mínimo de Saque
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  O valor mínimo para saque é <span className="font-bold text-foreground">5.000 KZ</span>
+                </p>
+              </div>
+
               <div className="glass rounded-2xl p-6">
                 <p className="text-sm text-muted-foreground">Conta Bancária - IBAN</p>
                 <p className="text-lg font-mono text-foreground mt-1">{profile.bankAccount || 'Não registada - Atualize no Meu Perfil'}</p>
@@ -1118,7 +1192,7 @@ const AffiliateDashboard = () => {
               <div className="glass rounded-2xl p-6">
                 <p className="text-sm text-muted-foreground mb-2">Fundo a Retirar</p>
                 <Input type="number" placeholder="Valor em Kz" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} className="bg-secondary/50 mb-3" />
-                <Button onClick={handleWithdraw} className="w-full btn-glow-accent !rounded-xl">
+                <Button onClick={handleWithdraw} disabled={isBlocked && !user?.is_admin} className="w-full btn-glow-accent !rounded-xl">
                   Sacar
                 </Button>
               </div>
