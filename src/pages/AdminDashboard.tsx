@@ -807,7 +807,7 @@ const AdminDashboard = () => {
       await supabase.from('visual_analysis_audit').delete().eq('task_id', taskId);
       await supabase.from('video_clicks').delete().eq('task_id', taskId);
       await supabase.from('task_submissions').delete().eq('task_id', taskId);
-      
+
       // Then delete the task
       const { error } = await supabase.from('tasks').delete().eq('id', taskId);
       if (error) throw error;
@@ -1904,7 +1904,7 @@ const AdminDashboard = () => {
                             const displayDetails = displayStatus === 'INCONCLUSIVO' && (result?.details as any)?.error_message
                               ? (result.details as any).error_message
                               : `Like: ${result?.like_detected ? '✅' : '❌'} | Sub: ${result?.subscribe_detected ? '✅' : '❌'} | Confiança: ${Math.round((result?.confidence || 0) * 100)}%`;
-                            
+
                             return (
                               <div className={`text-xs p-2 rounded-lg mb-1 ${displayColor}`}>
                                 <p className="font-bold">{displayLabel}</p>
@@ -2411,17 +2411,17 @@ const AdminDashboard = () => {
                   className="max-w-full max-h-full object-contain"
                 />
               ) : previewFile.data.startsWith('data:video/') || previewFile.data.includes('youtube.com/embed') || previewFile.data.includes('player.vimeo') || previewFile.data.match(/\.(mp4|webm|ogg)$/i) ? (
-                <video 
-                  src={previewFile.data} 
-                  controls 
+                <video
+                  src={previewFile.data}
+                  controls
                   className="max-w-full max-h-full"
                   autoPlay={false}
                 />
               ) : (
-                <iframe 
-                  src={previewFile.data} 
-                  title="Document Preview" 
-                  className="w-full h-full min-h-[500px]" 
+                <iframe
+                  src={previewFile.data}
+                  title="Document Preview"
+                  className="w-full h-full min-h-[500px]"
                 />
               )}
             </div>
