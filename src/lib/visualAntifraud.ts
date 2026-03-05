@@ -531,10 +531,8 @@ function calculateDecision(
   let status: VisualAnalysisResult['status'];
 
   // If we have ANY positive signal, always at least PROVAVEL
-  if (visualScore >= 90) {
+  if (likeDetected && subscribeDetected) {
     status = 'CONFIRMADO';
-  } else if (visualScore >= 30) { // Reduced from 50 to 30 for more tolerance
-    status = 'PROVAVEL';
   } else if (likeDetected || subscribeDetected || textDetected) {
     // Even with 0 score, if we detected something, give PROVAVEL
     status = 'PROVAVEL';
