@@ -2244,18 +2244,18 @@ const AdminDashboard = () => {
               <div className="space-y-4">
                 {blockedUsers.filter(u =>
                   !blockedSearchQuery ||
-                  (u.username || '').toLowerCase().includes(blockedSearchQuery.toLowerCase()) ||
+                  (u.full_name || u.username || '').toLowerCase().includes(blockedSearchQuery.toLowerCase()) ||
                   (u.email || '').toLowerCase().includes(blockedSearchQuery.toLowerCase())
                 ).map(user => (
                   <div key={user.id} className="glass rounded-xl p-4 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
                         <span className="text-red-600 dark:text-red-400 font-bold text-lg">
-                          {(user.username || user.email || 'U').charAt(0).toUpperCase()}
+                          {(user.full_name || user.username || user.email || 'U').charAt(0).toUpperCase()}
                         </span>
                       </div>
                       <div>
-                        <p className="font-semibold">{user.username || 'Sem nome'}</p>
+                        <p className="font-semibold">{user.full_name || user.username || 'Sem nome'}</p>
                         <p className="text-sm text-muted-foreground">{user.email}</p>
                         <p className="text-sm text-green-500 font-bold">Saldo: {parseFloat(user.balance || 0).toFixed(2)} Kz</p>
                       </div>
