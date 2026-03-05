@@ -1623,6 +1623,7 @@ const AdminDashboard = () => {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-primary">Saldo: {parseFloat(u.balance || 0).toFixed(2)} Kz</p>
+                      <p className={`text-sm font-bold ${(u.penalty_credit || 100) <= 20 ? 'text-red-500' : (u.penalty_credit || 100) <= 50 ? 'text-yellow-500' : 'text-green-500'}`}>Penalidade: {u.penalty_credit ?? 100}</p>
                     </div>
                   </div>
 
