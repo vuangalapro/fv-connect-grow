@@ -56,7 +56,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, is_admin, balance, penalty_credit, is_banned')
+        .select('id, full_name, is_admin, balance')
         .eq('id', supabaseUser.id)
         .single();
 
@@ -68,8 +68,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           full_name: data.full_name,
           is_admin: data.is_admin || supabaseUser.email === ADMIN_EMAIL,
           balance: parseFloat(data.balance || 0),
-          penalty_credit: data.penalty_credit ?? 100,
-          is_banned: data.is_banned || false,
+          penalty_credit: 100,
+          is_banned: false,
         });
         console.log('[Auth] Profile loaded successfully.');
         return;
@@ -91,8 +91,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           full_name: supabaseUser.user_metadata?.full_name || '',
           is_admin: supabaseUser.email === ADMIN_EMAIL,
           balance: 0,
+          penalty_credit: 100,
+          is_banned: false,
         }, { onConflict: 'id' })
-        .select('id, full_name, is_admin, balance, penalty_credit, is_banned')
+        .select('id, full_name, is_admin, balance')
         .single();
 
       if (created) {
@@ -102,8 +104,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           full_name: created.full_name,
           is_admin: created.is_admin || supabaseUser.email === ADMIN_EMAIL,
           balance: parseFloat(created.balance || 0),
-          penalty_credit: created.penalty_credit ?? 100,
-          is_banned: created.is_banned || false,
+          penalty_credit: 100,
+          is_banned: false,
         });
       }
     } catch (err) {
