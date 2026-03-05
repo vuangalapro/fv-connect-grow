@@ -730,8 +730,16 @@ const AdminDashboard = () => {
   const deleteAllMessages = async () => {
     if (!confirm('Tem certeza que deseja apagar TODAS as mensagens? Esta ação não pode ser desfeita!')) return;
     try {
-      const { error } = await supabase.from('support_messages').delete().neq('id', '');
-      if (error) throw error;
+      // First get all message IDs, then delete them
+      const { data: messages, error: fetchError } = await supabase.from('support_messages').select('id');
+      if (fetchError) throw fetchError;
+
+      if (messages && messages.length > 0) {
+        const idsToDelete = messages.map(m => m.id);
+        const { error } = await supabase.from('support_messages').delete().in('id', idsToDelete);
+        if (error) throw error;
+      }
+
       setSupportMessages([]);
       toast.success('Todas as mensagens foram apagadas');
     } catch (error) {
