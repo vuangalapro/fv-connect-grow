@@ -1571,6 +1571,8 @@ const AdminDashboard = () => {
                 variant="destructive"
                 size="sm"
                 onClick={async () => {
+                  // Close user detail panel first
+                  setSelectedUser(null);
                   // Fetch users with penalty_credit < 10
                   const { data: allProfiles } = await supabase
                     .from('profiles')
@@ -1645,6 +1647,23 @@ const AdminDashboard = () => {
               <button onClick={() => setShowBlockedPanel(false)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
                 <ArrowLeft size={16} /> Voltar
               </button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => {
+                  const { data: allProfiles } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .order('penalty_credit', { ascending: true });
+                  const blocked = (allProfiles || []).filter(p => (p.penalty_credit || 100) < 10);
+                  setBlockedUsers(blocked);
+                  toast.success('Lista atualizada');
+                }}
+                className="gap-2"
+              >
+                <RefreshCw size={16} />
+                Atualizar
+              </Button>
             </div>
             <h2 className="text-2xl font-bold mb-4 font-display">Lista de Bloqueios ({blockedUsers.length})</h2>
             <div className="space-y-2">
@@ -1661,11 +1680,76 @@ const AdminDashboard = () => {
                         <div className="w-24 h-2 bg-red-500/20 rounded-full overflow-hidden">
                           <div 
                             className="h-full bg-red-500 rounded-full" 
-                            style={{ width: `${Math.max(0, u.penalty_credit || 0)}%` }}
+                            style={{ width: `${Math.min(100, ((u.penalty_credit || 0) / 10) * 100)}%` }}
                           />
                         </div>
                         <span className="text-sm font-bold text-red-500">{u.penalty_credit || 0}</span>
                       </div>
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      {(u.penalty_credit || 0) > 0 ? (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={async () => {
+                            const { error } = await supabase
+                              .from('profiles')
+                              .update({ penalty_credit: 0 })
+                              .eq('id', u.id);
+                            if (!error) {
+                              toast.success('Utilizador bloqueado com sucesso');
+                              const updated = blockedUsers.map(user => 
+                                user.id === u.id ? { ...user, penalty_credit: 0 } : user
+                              );
+                              setBlockedUsers(updated);
+                            }
+                          }}
+                        >
+                          Bloquear
+                        </Button>
+                      ) : (
+                        <Button
+                          variant="default"
+                          size="sm"
+                          onClick={async () => {
+                            const { error } = await supabase
+                              .from('profiles')
+                              .update({ penalty_credit: 100 })
+                              .eq('id', u.id);
+                            if (!error) {
+                              toast.success('Utilizador desbloqueado com sucesso');
+                              const updated = blockedUsers.filter(user => user.id !== u.id);
+                              setBlockedUsers(updated);
+                            }
+                          }}
+                        >
+                          Desbloquear
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-red-500 border-red-500 hover:bg-red-500 hover:text-white"
+                        onClick={async () => {
+                          if (!confirm(`Tem certeza que deseja banir permanentemente ${u.full_name || u.email}? Esta ação não pode ser desfeita.`)) return;
+                          
+                          // Delete all related records first
+                          await supabase.from('task_submissions').delete().eq('user_id', u.id);
+                          await supabase.from('watch_sessions').delete().eq('user_id', u.id);
+                          await supabase.from('withdrawals').delete().eq('user_id', u.id);
+                          await supabase.from('support_messages').delete().eq('user_id', u.id);
+                          // Delete the user profile
+                          await supabase.from('profiles').delete().eq('id', u.id);
+                          // Delete auth user
+                          await supabase.auth.admin.deleteUser(u.id);
+                          
+                          toast.success('Utilizador banido permanentemente');
+                          const updated = blockedUsers.filter(user => user.id !== u.id);
+                          setBlockedUsers(updated);
+                        }}
+                      >
+                        Banir Permanentemente
+                      </Button>
                     </div>
                   </div>
                 </div>
