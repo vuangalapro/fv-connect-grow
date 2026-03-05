@@ -1,7 +1,7 @@
 /**
- * Visual Anti-Fraud Service - Calibrated for Accuracy
- * Detects like and subscribe buttons with fuzzy matching
- * Adjusted to avoid false positives and correctly identify valid captures
+ * Visual Anti-Fraud Service - Final Calibration
+ * Detects like and subscribe buttons (PT/EN, Light/Dark theme)
+ * Metadata only alerts, never reduces score
  */
 
 // Status type
@@ -27,20 +27,20 @@ export interface VisualAnalysisResult {
     score_breakdown?: {
       like_score: number;
       subscribe_score: number;
-      ocr_bonus: number;
       total_score: number;
     };
+    metadata_alert?: boolean;
   };
 }
 
-// RGB tolerance for compression artifacts (±15 as recommended)
+// RGB tolerance for compression artifacts (±15)
 const RGB_TOLERANCE = 15;
 const GRAY_THRESHOLD = 80;
 
 // Safe button regions (percentage of canvas - relative coordinates)
-// Like button: top-right area (5% from left, 68% from top)
+// Like button: left area (5% from left, 68% from top)
 const LIKE_REGION = { x: 0.05, y: 0.68, w: 0.14, h: 0.10 };
-// Subscribe button: top-right area (78% from left, 68% from top)
+// Subscribe button: right area (78% from left, 68% from top)
 const SUBSCRIBE_REGION = { x: 0.78, y: 0.68, w: 0.17, h: 0.10 };
 
 // Safe region getter with fallback
@@ -88,16 +88,16 @@ function detectTheme(pixels: Uint8ClampedArray, width: number, height: number): 
 
 // Get average color in region with safe bounds
 function getAverageColor(
-  pixels: Uint8ClampedArray,
-  width: number,
-  height: number,
+  pixels: Uint8ClampedArray, 
+  width: number, 
+  height: number, 
   region: { x: number; y: number; w: number; h: number }
 ): { r: number; g: number; b: number } | null {
-
+  
   // Safe bounds calculation
   const canvasWidth = width;
   const canvasHeight = height;
-
+  
   // Calculate actual coordinates with safe fallback
   const x = Math.floor((region?.x || 0.05) * canvasWidth);
   const y = Math.floor((region?.y || 0.68) * canvasHeight);
@@ -152,14 +152,14 @@ function isRed(color: { r: number; g: number; b: number }): boolean {
   return color.r > 180 && color.g < 80 && color.b < 80;
 }
 
-// Analyze like button with improved color detection
+// Analyze like button - Simplified detection
 function analyzeLikeButton(
-  pixels: Uint8ClampedArray,
-  width: number,
-  height: number,
+  pixels: Uint8ClampedArray, 
+  width: number, 
+  height: number, 
   theme: 'light' | 'dark'
 ): { detected: boolean; confidence: number; rgb?: { r: number; g: number; b: number } } {
-
+  
   const region = getLikeRegion();
   const color = getAverageColor(pixels, width, height, region);
 
@@ -178,36 +178,33 @@ function analyzeLikeButton(
 
   if (theme === 'light') {
     // Light theme: Active = black/dark (low RGB values)
-    // Tolerance ±15 RGB for compression robustness
-    const brightness = (color.r + color.g + color.b) / 3;
     const likeAtivoClaro = color.r <= 65 + RGB_TOLERANCE && color.g <= 65 + RGB_TOLERANCE && color.b <= 65 + RGB_TOLERANCE;
-
-    isActive = likeAtivoClaro || brightness < 100;
-    confidence = isActive ? 0.9 : 0.15;
-
-    console.log("Like - Tema Claro:", { likeAtivoClaro, brightness, isActive });
+    
+    isActive = likeAtivoClaro;
+    confidence = isActive ? 0.95 : 0.15;
+    
+    console.log("Like - Tema Claro:", { likeAtivoClaro, isActive });
   } else {
     // Dark theme: Active = white/bright (high RGB values)
-    const brightness = (color.r + color.g + color.b) / 3;
     const likeAtivoEscuro = color.r >= 195 - RGB_TOLERANCE && color.g >= 195 - RGB_TOLERANCE && color.b >= 195 - RGB_TOLERANCE;
-
-    isActive = likeAtivoEscuro || brightness > 150;
-    confidence = isActive ? 0.9 : 0.15;
-
-    console.log("Like - Tema Escuro:", { likeAtivoEscuro, brightness, isActive });
+    
+    isActive = likeAtivoEscuro;
+    confidence = isActive ? 0.95 : 0.15;
+    
+    console.log("Like - Tema Escuro:", { likeAtivoEscuro, isActive });
   }
 
   return { detected: isActive, confidence, rgb: color };
 }
 
-// Analyze subscribe button with improved color detection
+// Analyze subscribe button - Simplified detection
 function analyzeSubscribeButton(
-  pixels: Uint8ClampedArray,
-  width: number,
-  height: number,
+  pixels: Uint8ClampedArray, 
+  width: number, 
+  height: number, 
   theme: 'light' | 'dark'
 ): { detected: boolean; confidence: number; rgb?: { r: number; g: number; b: number } } {
-
+  
   const region = getSubscribeRegion();
   const color = getAverageColor(pixels, width, height, region);
 
@@ -226,34 +223,32 @@ function analyzeSubscribeButton(
 
   if (theme === 'light') {
     // Light theme: Subscribed = white/bright
-    const brightness = (color.r + color.g + color.b) / 3;
     const subscritoClaro = color.r >= 195 - RGB_TOLERANCE && color.g >= 195 - RGB_TOLERANCE && color.b >= 195 - RGB_TOLERANCE;
-
-    isSubscribed = subscritoClaro || brightness > 180;
-    confidence = isSubscribed ? 0.9 : 0.15;
-
-    console.log("Subscribe - Tema Claro:", { subscritoClaro, brightness, isSubscribed });
+    
+    isSubscribed = subscritoClaro;
+    confidence = isSubscribed ? 0.95 : 0.15;
+    
+    console.log("Subscribe - Tema Claro:", { subscritoClaro, isSubscribed });
   } else {
     // Dark theme: Subscribed = black/dark
-    const brightness = (color.r + color.g + color.b) / 3;
     const subscritoEscuro = color.r <= 65 + RGB_TOLERANCE && color.g <= 65 + RGB_TOLERANCE && color.b <= 65 + RGB_TOLERANCE;
-
-    isSubscribed = subscritoEscuro || brightness < 80;
-    confidence = isSubscribed ? 0.9 : 0.15;
-
-    console.log("Subscribe - Tema Escuro:", { subscritoEscuro, brightness, isSubscribed });
+    
+    isSubscribed = subscritoEscuro;
+    confidence = isSubscribed ? 0.95 : 0.15;
+    
+    console.log("Subscribe - Tema Escuro:", { subscritoEscuro, isSubscribed });
   }
 
   return { detected: isSubscribed, confidence, rgb: color };
 }
 
-// Check for subscription text - improved OCR
+// Check for subscription text - Simple OCR
 function checkSubscriptionText(
-  ctx: CanvasRenderingContext2D,
-  width: number,
+  ctx: CanvasRenderingContext2D, 
+  width: number, 
   height: number
 ): { detected: boolean; text: string } {
-
+  
   // Check subscribe button region for text
   const region = {
     x: Math.floor(width * 0.75),
@@ -289,7 +284,7 @@ function checkSubscriptionText(
 
   // Detect language based on text presence
   if (whiteRatio > 0.1 || blackRatio > 0.1) {
-    // For light theme: white text = subscribed (PT/EN)
+    // For light theme: white text = subscribed
     // For dark theme: black text = subscribed
     const detectedText = whiteRatio > blackRatio ? 'subscribed' : 'subscrito';
     console.log("OCR detectou:", detectedText, "→ Subscrição OK?", true);
@@ -300,76 +295,86 @@ function checkSubscriptionText(
   return { detected: false, text: '' };
 }
 
-// Decision Engine - Final version with adjusted weights
+// Decision Engine - FINAL VERSION
+// Metadata only alerts, never reduces score
 function calculateDecision(
   likeDetected: boolean,
   subscribeDetected: boolean,
   likeConfidence: number,
   subscribeConfidence: number,
-  textDetected: boolean
-): { status: VisualAnalysisResult['status']; confidence: number; score_breakdown: { like_score: number; subscribe_score: number; ocr_bonus: number; total_score: number } } {
+  textDetected: boolean,
+  metadataSuspect: boolean = false
+): { 
+  status: VisualAnalysisResult['status']; 
+  confidence: number; 
+  score_breakdown: { 
+    like_score: number; 
+    subscribe_score: number; 
+    total_score: number 
+  };
+  metadata_alert: boolean;
+} {
 
-  // Start with visual score
-  let score = 0;
+  // Visual score: Like 50% + Subscribe 50%
+  let visualScore = 0;
   const debug: string[] = [];
 
-  // Like contributes 60% (VisualDetector weight: 0.6)
+  // Like contributes 50%
   let likeScore = 0;
   if (likeDetected) {
-    likeScore = 60 * likeConfidence;
-    score += likeScore;
-    debug.push(`Like: ✓ (+${Math.round(likeScore)})`);
+    likeScore = 50;
+    visualScore += likeScore;
+    debug.push(`Like: ✓ (+50)`);
   } else {
     debug.push(`Like: ✗ (0)`);
   }
 
-  // Subscribe contributes 40% (OCRAnalyzer weight: 0.4)
+  // Subscribe contributes 50%
   let subscribeScore = 0;
   if (subscribeDetected) {
-    subscribeScore = 40 * subscribeConfidence;
-    score += subscribeScore;
-    debug.push(`Subscrito: ✓ (+${Math.round(subscribeScore)})`);
+    subscribeScore = 50;
+    visualScore += subscribeScore;
+    debug.push(`Subscribe: ✓ (+50)`);
   } else {
-    debug.push(`Subscrito: ✗ (0)`);
+    debug.push(`Subscribe: ✗ (0)`);
   }
 
-  // OCR/text detection adds bonus if visual is positive (but doesn't reduce score if absent)
-  let ocrBonus = 0;
+  // OCR bonus (only adds confidence, never reduces)
   if (textDetected && (likeDetected || subscribeDetected)) {
-    ocrBonus = 20;
-    score += ocrBonus;
-    debug.push(`OCR: ✓ (+${ocrBonus})`);
-  } else {
-    debug.push(`OCR: ✗ (0)`);
+    debug.push(`OCR: ✓ (+bonus)`);
   }
+
+  // Metadata only alerts - does NOT reduce score
+  const metadata_alert = metadataSuspect;
 
   // Calculate final confidence
-  const confidence = Math.min(score / 100, 1);
+  const confidence = visualScore / 100;
 
-  // Determine status - Adjusted thresholds for valid captures to reach CONFIRMADO
+  // Determine status
+  // 100% = CONFIRMADO, ≥70% = PROVÁVEL, <70% = SUSPEITO
   let status: VisualAnalysisResult['status'];
-  if (score >= 70) {
+  if (visualScore === 100) {
     status = 'CONFIRMADO';
-  } else if (score >= 50) {
+  } else if (visualScore >= 70) {
     status = 'PROVAVEL';
-  } else if (score >= 20) {
-    status = 'SUSPEITO';
   } else {
-    status = 'INCONCLUSIVO';
+    status = 'SUSPEITO';
   }
 
   console.log('Antifraud Decision:', {
-    score,
+    visualScore,
     status,
     confidence,
     debug,
-    score_breakdown: { like_score: likeScore, subscribe_score: subscribeScore, ocr_bonus: ocrBonus, total_score: score }
+    metadata_alert,
+    score_breakdown: { like_score: likeScore, subscribe_score: subscribeScore, total_score: visualScore }
   });
 
   return {
     status,
     confidence,
-    score_breakdown: { like_score: likeScore, subscribe_score: subscribeScore, ocr_bonus: ocrBonus, total_score: score }
+    score_breakdown: { like_score: likeScore, subscribe_score: subscribeScore, total_score: visualScore },
+    metadata_alert
   };
 }
 
@@ -382,6 +387,7 @@ export async function analyzeVisualAntifraud(
     ip?: string;
     deviceFingerprint?: string;
     userId?: string;
+    isSuspicious?: boolean;
   }
 ): Promise<VisualAnalysisResult> {
   const debugInfo: string[] = [];
@@ -418,13 +424,14 @@ export async function analyzeVisualAntifraud(
     const textResult = checkSubscriptionText(ctx, canvas.width, canvas.height);
     debugInfo.push(`Text: ${textResult.detected ? textResult.text : 'None'}`);
 
-    // Step 5: Calculate final decision
+    // Step 5: Calculate final decision (metadata only alerts, never reduces score)
     const decision = calculateDecision(
       likeResult.detected,
       subscribeResult.detected,
       likeResult.confidence,
       subscribeResult.confidence,
-      textResult.detected
+      textResult.detected,
+      metadata?.isSuspicious || false
     );
 
     // Detect language from text
@@ -446,7 +453,8 @@ export async function analyzeVisualAntifraud(
         like_rgb: likeResult.rgb,
         subscribe_rgb: subscribeResult.rgb,
         debug_info: debugInfo,
-        score_breakdown: decision.score_breakdown
+        score_breakdown: decision.score_breakdown,
+        metadata_alert: decision.metadata_alert
       }
     };
 
