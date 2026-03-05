@@ -727,6 +727,18 @@ const AdminDashboard = () => {
     }
   };
 
+  const deleteAllMessages = async () => {
+    if (!confirm('Tem certeza que deseja apagar TODAS as mensagens? Esta ação não pode ser desfeita!')) return;
+    try {
+      const { error } = await supabase.from('support_messages').delete().neq('id', '');
+      if (error) throw error;
+      setSupportMessages([]);
+      toast.success('Todas as mensagens foram apagadas');
+    } catch (error) {
+      toast.error('Erro ao apagar mensagens');
+    }
+  };
+
   const replyMessage = async (msgId: string) => {
     if (!replyText.trim()) {
       toast.error('Digite uma resposta');
@@ -1603,6 +1615,7 @@ const AdminDashboard = () => {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-primary">Saldo: {parseFloat(u.balance || 0).toFixed(2)} Kz</p>
+                      <p className={`text-sm font-bold ${(u.penalty_credit || 100) <= 20 ? 'text-red-500' : (u.penalty_credit || 100) <= 50 ? 'text-yellow-500' : 'text-green-500'}`}>Penalidade: {u.penalty_credit ?? 100}</p>
                     </div>
                   </div>
 
@@ -2096,7 +2109,14 @@ const AdminDashboard = () => {
                 Atualizar
               </Button>
             </div>
-            <h2 className="text-2xl font-bold mb-6 font-display">Mensagens de Suporte ({unreadMessagesCount > 0 ? `${unreadMessagesCount} nova(s)` : 'Todas vistas'})</h2>
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold font-display">Mensagens de Suporte ({unreadMessagesCount > 0 ? `${unreadMessagesCount} nova(s)` : 'Todas vistas'})</h2>
+              {supportMessages.length > 0 && (
+                <Button variant="destructive" size="sm" onClick={deleteAllMessages} className="gap-2">
+                  <Trash2 size={16} /> Apagar Todas
+                </Button>
+              )}
+            </div>
             <div className="space-y-4">
               {supportMessages.map(msg => (
                 <div key={msg.id} className={`glass rounded-2xl p-6 ${!msg.is_read ? 'border-l-4 border-l-yellow-500' : ''}`}>
