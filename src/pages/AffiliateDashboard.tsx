@@ -568,6 +568,11 @@ const AffiliateDashboard = () => {
             <button
               key={item.id}
               onClick={() => {
+                // Block tasks and withdrawals for users with penalty_credit <= 20
+                if ((item.id === 'tasks' || item.id === 'withdrawals') && (profile.penaltyCredit ?? 100) <= 20) {
+                  toast.error('Conta bloqueada! Não pode aceder a esta funcionalidade.');
+                  return;
+                }
                 if (item.id === 'home') {
                   showRulesOnDemand();
                 }
@@ -612,6 +617,11 @@ const AffiliateDashboard = () => {
           <button
             key={item.id}
             onClick={() => {
+              // Block tasks and withdrawals for users with penalty_credit <= 20
+              if ((item.id === 'tasks' || item.id === 'withdrawals') && (profile.penaltyCredit ?? 100) <= 20) {
+                toast.error('Conta bloqueada! Não pode aceder a esta funcionalidade.');
+                return;
+              }
               if (item.id === 'home') {
                 showRulesOnDemand();
               }
@@ -643,6 +653,18 @@ const AffiliateDashboard = () => {
         {/* HOME - Slider */}
         {panel === 'home' && (
           <div>
+            {/* Blocked Account Warning Banner */}
+            {(profile.penaltyCredit ?? 100) <= 20 && (
+              <div className="bg-red-500/20 border border-red-500/50 rounded-xl p-4 mb-4">
+                <div className="flex items-center gap-3">
+                  <AlertTriangle className="text-red-400 shrink-0" size={24} />
+                  <div>
+                    <p className="font-bold text-red-400">Conta Bloqueada</p>
+                    <p className="text-sm text-red-300">Esta conta foi bloqueada por motivos de fraude. Por favor contacte o suporte.</p>
+                  </div>
+                </div>
+              </div>
+            )}
             <div className="relative rounded-2xl overflow-hidden h-64 md:h-96 lg:h-[400px]">
               {slides.map((s, i) => (
                 <div

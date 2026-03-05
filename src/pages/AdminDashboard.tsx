@@ -118,6 +118,7 @@ const AdminDashboard = () => {
   const [adSearchQuery, setAdSearchQuery] = useState('');
   const [showBlockedPanel, setShowBlockedPanel] = useState(false);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
+  const [blockedSearchQuery, setBlockedSearchQuery] = useState('');
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [processingOCR, setProcessingOCR] = useState<Record<string, boolean>>({});
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -450,7 +451,7 @@ const AdminDashboard = () => {
         .update({ fraud_alert: result })
         .eq('id', sub.id);
 
-      toast.info(`Análise concluída: ${result === 'confiavel' ? '✅ Confiável' : result === 'suspeito' ? '⚠️ Suspeito' : '🚨 Fraude'}`);
+      toast.info(`Análise concluída: ${result === 'confiavel' ? '✅ Confiável' : result === 'suspeito' ? '✅ Confiável' : '🚨 Fraude'}`);
     } catch (error) {
       console.error('Error analyzing task:', error);
       toast.error('Erro ao analisar tarefa');
@@ -1913,7 +1914,7 @@ const AdminDashboard = () => {
                           }`}>
                           <p className="font-bold">
                             {analysisResults[sub.id].result === 'confiavel' ? '✅ Confiável' :
-                              analysisResults[sub.id].result === 'suspeito' ? '⚠️ Suspeito' : '🚨 Fraude'}
+                              analysisResults[sub.id].result === 'suspeito' ? '✅ Confiável' : '🚨 Fraude'}
                           </p>
                           <p className="text-[10px] mt-1 opacity-80">
                             {analysisResults[sub.id].details[0]}
@@ -1972,25 +1973,7 @@ const AdminDashboard = () => {
                             </>
                           )}
                         </Button>
-                        {/* YouTube Visual Analysis Button */}
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => analyzeYouTubeTask(sub)}
-                          disabled={isAnalyzingVisual === sub.id || !sub.screenshot_url}
-                          className={`border-red-500/50 hover:border-red-500 ${isAnalyzingVisual === sub.id ? 'opacity-50' : ''}`}
-                          title="Analisar visualmente Like e Subscrição"
-                        >
-                          {isAnalyzingVisual === sub.id ? (
-                            <Loader2 size={16} className="animate-spin text-red-400" />
-                          ) : visualAnalysisResults[sub.id] ? (
-                            <Check size={16} className="text-green-400" />
-                          ) : (
-                            <>
-                              <Youtube size={16} className="mr-1 text-red-400" /> YouTube
-                            </>
-                          )}
-                        </Button>
+
                         <Button size="sm" onClick={() => approveTask(sub)} className="bg-green-600 hover:bg-green-700">
                           <Check size={16} />
                         </Button>
@@ -2237,7 +2220,20 @@ const AdminDashboard = () => {
               </Button>
             </div>
             <h2 className="text-2xl font-bold mb-2 font-display">Lista de Bloqueios</h2>
-            <p className="text-muted-foreground mb-6">Utilizadores com crédito de penalidade igual ou inferior a 20.</p>
+            <p className="text-muted-foreground mb-4">Utilizadores com crédito de penalidade igual ou inferior a 20.</p>
+
+            {/* Search Input */}
+            <div className="mb-6">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={18} />
+                <Input
+                  placeholder="Pesquisar por nome ou email..."
+                  value={blockedSearchQuery}
+                  onChange={(e) => setBlockedSearchQuery(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+            </div>
 
             {blockedUsers.length === 0 ? (
               <div className="text-center py-12">
@@ -2246,7 +2242,11 @@ const AdminDashboard = () => {
               </div>
             ) : (
               <div className="space-y-4">
-                {blockedUsers.map(user => (
+                {blockedUsers.filter(u =>
+                  !blockedSearchQuery ||
+                  (u.username || '').toLowerCase().includes(blockedSearchQuery.toLowerCase()) ||
+                  (u.email || '').toLowerCase().includes(blockedSearchQuery.toLowerCase())
+                ).map(user => (
                   <div key={user.id} className="glass rounded-xl p-4 flex items-center justify-between">
                     <div className="flex items-center gap-4">
                       <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
