@@ -517,10 +517,10 @@ function calculateDecision(
 
   // Subscribe: needs BOTH template AND OCR for full 50%
   // This is stricter - both methods must confirm
-  if (subscribeTemplateDetected && textDetected) {
+  if (subscribeDetected && textDetected) {
     subscribeScore = 50;
     visualScore += subscribeScore;
-  } else if (subscribeTemplateDetected || textDetected) {
+  } else if (subscribeDetected || textDetected) {
     // Only one method detected - partial score
     subscribeScore = 25;
     visualScore += subscribeScore;
