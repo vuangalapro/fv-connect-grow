@@ -1254,14 +1254,14 @@ const AffiliateDashboard = () => {
 
         {/* SUPPORT */}
         {panel === 'support' && (
-          <div>
+          <div className="w-full max-w-4xl mx-auto">
             <button onClick={() => setPanel('home')} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
               <ArrowLeft size={16} /> Voltar
             </button>
             <h2 className="text-2xl font-bold mb-2 font-display">Suporte Técnico</h2>
             <p className="text-muted-foreground mb-6">Entre em contacto com a equipe do suporte técnico</p>
 
-            <div className="grid md:grid-cols-2 gap-6 max-w-4xl">
+            <div className="grid md:grid-cols-2 gap-6">
               {/* Form to send new message */}
               <div className="glass rounded-2xl p-6">
                 <h3 className="font-bold mb-4">Nova Mensagem</h3>
@@ -1271,7 +1271,7 @@ const AffiliateDashboard = () => {
                 </div>
                 <form onSubmit={handleSupportSubmit} className="space-y-3">
                   <Input placeholder="Assunto" value={supportForm.subject} onChange={e => setSupportForm({ ...supportForm, subject: e.target.value })} className="bg-secondary/50" required />
-                  <Textarea placeholder="Escreva sua mensagem" value={supportForm.message} onChange={e => setSupportForm({ ...supportForm, message: e.target.value })} className="bg-secondary/50" rows={3} required />
+                  <Textarea placeholder="Escreva sua mensagem" value={supportForm.message} onChange={e => setSupportForm({ ...supportForm, message: e.target.value })} className="bg-secondary/50 break-all" rows={3} required />
                   <Button type="submit" className="w-full btn-glow-primary !rounded-xl">Enviar</Button>
                 </form>
               </div>
@@ -1300,7 +1300,7 @@ const AffiliateDashboard = () => {
                           <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">✓</span>
                         )}
                       </div>
-                      <p className="text-xs text-muted-foreground truncate">{msg.message}</p>
+                      <p className="text-xs text-muted-foreground truncate break-all">{msg.message}</p>
                       <p className="text-xs text-muted-foreground mt-1">
                         {new Date(msg.created_at).toLocaleDateString()}
                       </p>
@@ -1317,7 +1317,7 @@ const AffiliateDashboard = () => {
 
             {/* Selected message detail */}
             {selectedMessage && (
-              <div className="mt-6 glass rounded-2xl p-6 max-w-4xl">
+              <div className="mt-6 glass rounded-2xl p-6 w-full">
                 <div className="flex justify-between items-start mb-4">
                   <div>
                     <h3 className="font-bold">{selectedMessage.subject}</h3>
@@ -1331,7 +1331,7 @@ const AffiliateDashboard = () => {
                   </Button>
                 </div>
 
-                <div className="bg-secondary/30 p-4 rounded-lg mb-4">
+                <div className="bg-secondary/30 p-4 rounded-lg mb-4 break-all">
                   <p className="text-sm whitespace-pre-wrap">{selectedMessage.message}</p>
                 </div>
 
