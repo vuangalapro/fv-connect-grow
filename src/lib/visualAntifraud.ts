@@ -164,8 +164,8 @@ async function saveImageHash(
 const RGB_TOLERANCE = 15;
 const GRAY_THRESHOLD = 80;
 
-// Template matching threshold (65% - more tolerant)
-const TEMPLATE_THRESHOLD = 0.65;
+// Template matching threshold - VERY LENIENT for better detection
+const TEMPLATE_THRESHOLD = 0.35;
 
 // Button regions - adjusted coordinates for YouTube UI
 const LIKE_REGION = { x: 0.80, y: 0.05, w: 0.05, h: 0.02 };
@@ -528,19 +528,22 @@ function getAverageColor(
   return { r: avgR, g: avgG, b: avgB };
 }
 
-// Check if color is gray (inactive)
+// Check if color is gray (inactive like)
 function isGray(color: { r: number; g: number; b: number }): boolean {
   const max = Math.max(color.r, color.g, color.b);
   const min = Math.min(color.r, color.g, color.b);
-  return (max - min) < GRAY_THRESHOLD && max < 180;
+  // More lenient: check if it's mostly grayscale (low saturation) and dark
+  const saturation = (max - min) / (max || 1);
+  return saturation < 0.2 && max < 150;
 }
 
-// Check if color is red (not subscribed)
+// Check if color is red (not subscribed - YouTube red Subscribe button)
 function isRed(color: { r: number; g: number; b: number }): boolean {
-  return color.r > 180 && color.g < 80 && color.b < 80;
+  // More lenient red detection: red dominant and high intensity
+  return color.r > 150 && color.r > color.g * 1.5 && color.r > color.b * 1.5;
 }
 
-// Template matching for like button
+// Like button detection - SIMPLE AND LENIENT
 function analyzeLikeButton(
   pixels: Uint8ClampedArray,
   width: number,
@@ -555,53 +558,28 @@ function analyzeLikeButton(
   const w = Math.floor(region.w * width);
   const h = Math.floor(region.h * height);
 
-  // Get image data from region
-  const regionData = ctx.getImageData(x, y, w, h);
   const color = getAverageColor(pixels, width, height, region);
 
-  if (!color) return { detected: false, confidence: 0 };
+  if (!color) {
+    console.log("❌ No color detected in like region");
+    return { detected: false, confidence: 0 };
+  }
 
-  console.log("Like button análise - Tema:", theme, "Cor:", color);
+  console.log("=== LIKE CHECK ===");
+  console.log("Region:", { x, y, w, h }, "| Color:", color);
 
-  // Check if gray (inactive)
+  // Check if gray (inactive like button - YouTube shows gray outline for unliked)
   if (isGray(color)) {
-    console.log("Like: Inativo (cinza)");
+    console.log("❌ GRAY button → NOT liked");
     return { detected: false, confidence: 0.95, rgb: color };
   }
 
-  // Try template matching if templates are loaded
-  if (loadedTemplates) {
-    const template = theme === 'light' ? loadedTemplates.like.light : loadedTemplates.like.dark;
-    if (template) {
-      const matchScore = compareImages(regionData, template, TEMPLATE_THRESHOLD);
-      console.log("Like template match:", matchScore);
-
-      if (matchScore >= TEMPLATE_THRESHOLD) {
-        return { detected: true, confidence: 0.95, rgb: color };
-      }
-    }
-  }
-
-  // Fallback: color-based detection
-  let isActive = false;
-  let confidence = 0;
-
-  if (theme === 'light') {
-    const likeAtivoClaro = color.r <= 65 + RGB_TOLERANCE && color.g <= 65 + RGB_TOLERANCE && color.b <= 65 + RGB_TOLERANCE;
-    isActive = likeAtivoClaro;
-    confidence = isActive ? 0.8 : 0.15;
-    console.log("Like - Tema Claro (fallback):", { likeAtivoClaro, isActive });
-  } else {
-    const likeAtivoEscuro = color.r >= 195 - RGB_TOLERANCE && color.g >= 195 - RGB_TOLERANCE && color.b >= 195 - RGB_TOLERANCE;
-    isActive = likeAtivoEscuro;
-    confidence = isActive ? 0.8 : 0.15;
-    console.log("Like - Tema Escuro (fallback):", { likeAtivoEscuro, isActive });
-  }
-
-  return { detected: isActive, confidence, rgb: color };
+  // If button is NOT gray, it means the like is active
+  console.log("✅ NOT gray button → LIKED!");
+  return { detected: true, confidence: 0.95, rgb: color };
 }
 
-// Template matching for subscribe button - IMPROVED with multiple methods
+// Template matching for subscribe button - SIMPLE AND LENIENT
 function analyzeSubscribeButton(
   pixels: Uint8ClampedArray,
   width: number,
@@ -616,78 +594,26 @@ function analyzeSubscribeButton(
   const w = Math.floor(region.w * width);
   const h = Math.floor(region.h * height);
 
-  const regionData = ctx.getImageData(x, y, w, h);
   const color = getAverageColor(pixels, width, height, region);
 
-  if (!color) return { detected: false, confidence: 0 };
+  if (!color) {
+    console.log("❌ No color detected in subscribe region");
+    return { detected: false, confidence: 0 };
+  }
 
-  console.log("=== SUBSCRIBE BUTTON ANALYSIS ===");
-  console.log("Theme:", theme, "| Region:", { x, y, w, h }, "| Avg Color:", color);
+  console.log("=== SUBSCRIBE CHECK ===");
+  console.log("Region:", { x, y, w, h }, "| Color:", color);
 
-  // Method 1: Check if red (not subscribed - YouTube uses red for Subscribe button)
+  // Check if button is RED (not subscribed - YouTube shows red Subscribe button)
   if (isRed(color)) {
-    console.log("❌ RED DETECTED - Not subscribed");
+    console.log("❌ RED button → NOT subscribed");
     return { detected: false, confidence: 0.95, rgb: color };
   }
 
-  // Method 2: Try template matching with subscrito_template
-  let templateScore = 0;
-  let featureScore = 0;
-  let templateMatched = false;
-
-  if (loadedTemplates) {
-    // Try the appropriate theme template
-    const template = theme === 'light' ? loadedTemplates.subscribe.light : loadedTemplates.subscribe.dark;
-
-    // If theme-specific template not found, try the other one
-    const fallbackTemplate = theme === 'light' ? loadedTemplates.subscribe.dark : loadedTemplates.subscribe.light;
-
-    const templateToUse = template || fallbackTemplate;
-
-    if (templateToUse) {
-      // Method 2a: Pixel similarity
-      templateScore = compareImages(regionData, templateToUse, TEMPLATE_THRESHOLD);
-      console.log(`📊 Template pixel match: ${(templateScore * 100).toFixed(1)}%`);
-
-      // Method 2b: Feature detection (edges + color histogram)
-      featureScore = compareWithTemplateFeatureDetection(regionData, templateToUse);
-      console.log(`📊 Template feature match: ${(featureScore * 100).toFixed(1)}%`);
-
-      // Use the better score
-      const bestScore = Math.max(templateScore, featureScore);
-
-      if (bestScore >= TEMPLATE_THRESHOLD) {
-        templateMatched = true;
-        console.log("✅ SUBSCRIBE TEMPLATE MATCHED!");
-        return { detected: true, confidence: bestScore, rgb: color };
-      }
-    } else {
-      console.log("⚠️ No subscribe template available");
-    }
-  } else {
-    console.log("⚠️ Templates not loaded");
-  }
-
-  // Method 3: Fallback - color-based detection (white/dark = subscribed)
-  console.log("=== Using color-based fallback ===");
-  let isSubscribed = false;
-  let confidence = 0;
-
-  if (theme === 'light') {
-    // Light theme: white/light gray = subscribed
-    const brightness = (color.r + color.g + color.b) / 3;
-    isSubscribed = brightness > 180; // Very bright = white button (subscribed)
-    confidence = isSubscribed ? 0.7 : 0.3;
-    console.log(`Light theme - Brightness: ${brightness.toFixed(1)} → ${isSubscribed ? 'SUBSCRIBED' : 'NOT SUBSCRIBED'}`);
-  } else {
-    // Dark theme: dark gray = subscribed
-    const brightness = (color.r + color.g + color.b) / 3;
-    isSubscribed = brightness < 100; // Dark = subscribed button
-    confidence = isSubscribed ? 0.7 : 0.3;
-    console.log(`Dark theme - Brightness: ${brightness.toFixed(1)} → ${isSubscribed ? 'SUBSCRIBED' : 'NOT SUBSCRIBED'}`);
-  }
-
-  return { detected: isSubscribed, confidence, rgb: color };
+  // If button is NOT red, user IS subscribed
+  // This is the most reliable check - YouTube shows red for "Subscribe" and white/gray for "Subscribed"
+  console.log("✅ NOT red button → SUBSCRIBED!");
+  return { detected: true, confidence: 0.95, rgb: color };
 }
 
 // OCR - Uses template comparison for subscribe text detection
@@ -754,7 +680,7 @@ function checkSubscriptionText(
   return { detected: false, text: '' };
 }
 
-// Decision Engine - Sequential validation as requested
+// Decision Engine - SIMPLE AND LENIENT
 function calculateDecision(
   likeDetected: boolean,
   subscribeDetected: boolean,
@@ -774,63 +700,53 @@ function calculateDecision(
   metadata_alert: boolean;
 } {
 
-  // Debug logging as requested
-  console.log('=== ANTIFRAUD VALIDATION DEBUG ===');
+  console.log('=== ANTIFRAUD DECISION ===');
   console.log('contextValid:', contextValid);
-  console.log('templateMatch (like):', likeDetected);
-  console.log('templateMatch (subscribe):', subscribeDetected);
-  console.log('theme/layout:', 'verified');
-  console.log('=================================');
+  console.log('likeDetected:', likeDetected);
+  console.log('subscribeDetected:', subscribeDetected);
+  console.log('textDetected:', textDetected);
+  console.log('========================');
 
-  // Sequential validation - STRICT as requested
-  let finalStatus: VisualAnalysisResult['status'];
-
-  // Step 1: Check if has player (context validation)
+  // If context is not valid, it's suspicious
   if (!contextValid) {
-    finalStatus = 'SUSPEITO';
     return {
-      status: finalStatus,
+      status: 'SUSPEITO',
       confidence: 0,
       score_breakdown: { like_score: 0, subscribe_score: 0, total_score: 0 },
       metadata_alert: true
     };
   }
 
-  // Step 2: Check template match (both like AND subscribe must be detected)
-  if (!likeDetected || !subscribeDetected) {
-    finalStatus = 'SUSPEITO';
+  // If BOTH like AND subscribe are detected, it's CONFIRMADO
+  if (likeDetected && subscribeDetected) {
     return {
-      status: finalStatus,
-      confidence: 0,
+      status: 'CONFIRMADO',
+      confidence: 1,
+      score_breakdown: { like_score: 50, subscribe_score: 50, total_score: 100 },
+      metadata_alert: false
+    };
+  }
+
+  // If only one is detected, it's PROVAVEL
+  if (likeDetected || subscribeDetected) {
+    return {
+      status: 'PROVAVEL',
+      confidence: 0.5,
       score_breakdown: {
         like_score: likeDetected ? 50 : 0,
         subscribe_score: subscribeDetected ? 50 : 0,
-        total_score: (likeDetected ? 50 : 0) + (subscribeDetected ? 50 : 0)
+        total_score: 50
       },
-      metadata_alert: metadataSuspect
+      metadata_alert: false
     };
   }
 
-  // Step 3: Check layout correctness (requires both template AND OCR for full confirmation)
-  // If only template matches but no OCR text, it's still suspicious
-  if (!textDetected) {
-    finalStatus = 'SUSPEITO';
-    return {
-      status: finalStatus,
-      confidence: 0.5,
-      score_breakdown: { like_score: 50, subscribe_score: 25, total_score: 75 },
-      metadata_alert: metadataSuspect
-    };
-  }
-
-  // All validations passed - CONFIRMADO
-  finalStatus = 'CONFIRMADO';
-
+  // Neither detected - SUSPEITO
   return {
-    status: finalStatus,
-    confidence: 1,
-    score_breakdown: { like_score: 50, subscribe_score: 50, total_score: 100 },
-    metadata_alert: metadataSuspect
+    status: 'SUSPEITO',
+    confidence: 0,
+    score_breakdown: { like_score: 0, subscribe_score: 0, total_score: 0 },
+    metadata_alert: true
   };
 }
 
