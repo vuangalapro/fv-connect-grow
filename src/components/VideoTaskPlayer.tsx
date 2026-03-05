@@ -43,13 +43,15 @@ const YouTubePlayer = ({
   onTimeUpdate,
   requiredTime = 90,
   onVideoComplete,
-  onTimeReached
+  onTimeReached,
+  autoplay = 0
 }: {
   videoId: string;
   onTimeUpdate: (seconds: number) => void;
   requiredTime: number;
   onVideoComplete?: () => void;
   onTimeReached?: () => void;
+  autoplay?: number;
 }) => {
   const [isReady, setIsReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -79,7 +81,7 @@ const YouTubePlayer = ({
       playerRef.current = new (window as any).YT.Player('youtube-player', {
         videoId,
         playerVars: {
-          autoplay: 0,
+          autoplay: autoplay,
           // Disable keyboard controls and progress bar features for anti-fraud
           disablekb: 1,        // Disable keyboard controls
           fs: 0,               // Disable fullscreen button
@@ -257,8 +259,19 @@ export default function VideoTaskPlayer({
   const [startTime, setStartTime] = useState<Date | null>(null);
   const [isVideoCompleted, setIsVideoCompleted] = useState(false);
   const [hasOpenedYouTube, setHasOpenedYouTube] = useState(false);
+  const [shouldAutoplay, setShouldAutoplay] = useState(false);
 
   const videoId = extractVideoId(videoUrl);
+
+  // Auto-play video when popup opens
+  useEffect(() => {
+    if (isPopupOpen && isThisTaskOpen) {
+      setShouldAutoplay(true);
+      // Reset autoplay flag after a short delay so it can be triggered again if popup is closed and reopened
+      const timer = setTimeout(() => setShouldAutoplay(false), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isPopupOpen, isThisTaskOpen]);
 
   // Check if this video was already completed in this session
   const isVideoCompletedInSession = useCallback(() => {
@@ -600,6 +613,7 @@ export default function VideoTaskPlayer({
               onTimeUpdate={handleTimeUpdateInternal}
               onVideoComplete={handleVideoComplete}
               onTimeReached={handleVideoComplete}
+              autoplay={shouldAutoplay ? 1 : 0}
             />
 
             {/* Instructions - Show after video is completed */}
