@@ -605,6 +605,17 @@ export async function analyzeVisualAntifraud(
     const textResult = checkSubscriptionText(ctx, canvas.width, canvas.height, subscribeResult.detected);
     debugInfo.push(`OCR: ${textResult.detected ? textResult.text : 'None'}`);
 
+    // Debug logging
+    console.log({
+      likeDetected: likeResult.detected,
+      subscribeDetected: subscribeResult.detected,
+      likeScore: likeResult.detected ? 50 : 0,
+      subscribeScore: (subscribeResult.detected && textResult.detected) ? 50 : (subscribeResult.detected ? 25 : 0),
+      ocrText: textResult.text,
+      canvasWidth: canvas.width,
+      canvasHeight: canvas.height
+    });
+
     // Step 6: Calculate final decision
     const decision = calculateDecision(
       likeResult.detected,
