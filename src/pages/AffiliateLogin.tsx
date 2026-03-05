@@ -18,6 +18,7 @@ const AffiliateLogin = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
+  const [showEmailVerifiedMessage, setShowEmailVerifiedMessage] = useState(false);
 
   const { user, login, register, loading: authLoading } = useAuth();
   const navigate = useNavigate();
@@ -78,7 +79,8 @@ const AffiliateLogin = () => {
 
         const result = await register(email.trim(), password.trim(), fullName.trim());
         if (result.success) {
-          toast.success('Conta criada com sucesso!');
+          // Show email verification popup instead of just toast
+          setShowEmailVerifiedMessage(true);
         } else {
           toast.error(result.error || 'Erro ao criar conta');
         }
@@ -289,12 +291,12 @@ const AffiliateLogin = () => {
               </button>
             </div>
             <div className="p-6 space-y-6 text-sm text-muted-foreground overflow-y-auto max-h-[calc(90vh-80px)]">
-              
+
               {/* Terms of Use */}
               <div className="space-y-4">
                 <h3 className="text-lg font-bold text-foreground">📄 TERMOS DE USO DA PLATAFORMA DE AFILIADOS</h3>
                 <p className="text-xs">Última atualização: 03.03.2026</p>
-                
+
                 <div className="space-y-3">
                   <h4 className="font-semibold text-foreground">1. Aceitação dos Termos</h4>
                   <p>Ao acessar ou utilizar esta plataforma de afiliados ("Plataforma"), o usuário ("Afiliado") declara que leu, compreendeu e concorda integralmente com estes Termos de Uso.</p>
@@ -389,7 +391,7 @@ const AffiliateLogin = () => {
               <div className="space-y-4 pt-4 border-t border-border">
                 <h3 className="text-lg font-bold text-foreground">🔐 POLÍTICA DE PRIVACIDADE</h3>
                 <p className="text-xs">Última atualização: 04.03.2026</p>
-                
+
                 <div className="space-y-3">
                   <h4 className="font-semibold text-foreground">1. Princípios Gerais</h4>
                   <p>A Plataforma respeita a privacidade dos usuários e trata dados pessoais com base nos princípios de:</p>
@@ -520,6 +522,33 @@ const AffiliateLogin = () => {
                 </Button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Email Verification Message Modal */}
+      {showEmailVerifiedMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div className="bg-background border border-border rounded-2xl max-w-md w-full p-6 text-center">
+            <div className="w-16 h-16 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Mail size={32} className="text-green-500" />
+            </div>
+            <h2 className="text-xl font-bold text-foreground mb-4">Verifique o seu Email</h2>
+            <p className="text-muted-foreground mb-4">
+              Um link de verificação foi enviado para o seu email. Por favor, clique no link recebido e depois volte para iniciar sessão.
+            </p>
+            <p className="text-sm text-muted-foreground mb-6">
+              Verifique a caixa de spam se não receber o email em alguns minutos.
+            </p>
+            <Button
+              onClick={() => {
+                setShowEmailVerifiedMessage(false);
+                setIsLogin(true);
+              }}
+              className="w-full btn-glow-primary"
+            >
+              Voltar para Login
+            </Button>
           </div>
         </div>
       )}

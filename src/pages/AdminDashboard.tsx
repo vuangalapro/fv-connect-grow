@@ -418,8 +418,15 @@ const AdminDashboard = () => {
             imageUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/screenshots/${sub.screenshot_url}`;
           }
 
-          // Analyze the screenshot using template matching
-          const visualResult = await analyzeVisualAntifraud(imageUrl);
+          // Analyze the screenshot using template matching with full metadata
+          const visualResult = await analyzeVisualAntifraud(imageUrl, {
+            userId: sub.user_id,
+            submissionId: sub.id,
+            ip: sub.ip_address,
+            deviceFingerprint: sub.device_fingerprint,
+            supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+            supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY
+          });
 
           // Store visual analysis result
           setVisualAnalysisResults(prev => ({
@@ -523,8 +530,15 @@ const AdminDashboard = () => {
         imageUrl = `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/screenshots/${sub.screenshot_url}`;
       }
 
-      // Analyze the image using the new visual antifraud service
-      const result = await analyzeVisualAntifraud(imageUrl);
+      // Analyze the image using the new visual antifraud service with full metadata
+      const result = await analyzeVisualAntifraud(imageUrl, {
+        userId: sub.user_id,
+        submissionId: sub.id,
+        ip: sub.ip_address,
+        deviceFingerprint: sub.device_fingerprint,
+        supabaseUrl: import.meta.env.VITE_SUPABASE_URL,
+        supabaseKey: import.meta.env.VITE_SUPABASE_ANON_KEY
+      });
 
       // Store result
       setVisualAnalysisResults(prev => ({
@@ -1957,54 +1971,29 @@ const AdminDashboard = () => {
                       )}
                     </div>
                     <div className="flex flex-col gap-2">
-                      {/* Analysis result display */}
-                      {analysisResults[sub.id] && (
+                      {/* Single analysis result - shows ONLY ONE status */}
+                      {analysisResults[sub.id] ? (
                         <div className={`text-xs p-2 rounded-lg mb-1 ${analysisResults[sub.id].result === 'confiavel' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                          analysisResults[sub.id].result === 'suspeito' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-                            'bg-red-500/20 text-red-400 border border-red-500/30'
+                            analysisResults[sub.id].result === 'suspeito' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                              'bg-red-500/20 text-red-400 border border-red-500/30'
                           }`}>
                           <p className="font-bold">
                             {analysisResults[sub.id].result === 'confiavel' ? '✅ Confiável' :
-                              analysisResults[sub.id].result === 'suspeito' ? '✅ Confiável' : '🚨 Fraude'}
-                          </p>
-                          <p className="text-[10px] mt-1 opacity-80">
-                            {analysisResults[sub.id].details[0]}
+                              analysisResults[sub.id].result === 'suspeito' ? '⚠️ Suspeito' : '🚨 Fraude'}
                           </p>
                         </div>
-                      )}
-                      {/* YouTube Visual Analysis result display */}
-                      {visualAnalysisResults[sub.id] && (
-                        <>
-                          {(() => {
-                            const result = visualAnalysisResults[sub.id];
-                            const statusColors: Record<string, string> = {
-                              'CONFIRMADO': 'bg-green-500/20 text-green-400 border border-green-500/30',
-                              'PROVAVEL': 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
-                              'INCONCLUSIVO': 'bg-gray-500/20 text-gray-400 border border-gray-500/30',
-                              'SUSPEITO': 'bg-red-500/20 text-red-400 border border-red-500/30',
-                            };
-                            const statusLabels: Record<string, string> = {
-                              'CONFIRMADO': '✅ CONFIRMADO',
-                              'PROVAVEL': '⚠️ PROVÁVEL',
-                              'INCONCLUSIVO': '❓ INCONCLUSIVO',
-                              'SUSPEITO': '🚨 SUSPEITO',
-                            };
-                            const displayStatus = result?.status || 'INCONCLUSIVO';
-                            const displayColor = statusColors[displayStatus] || 'bg-gray-500/20 text-gray-400';
-                            const displayLabel = statusLabels[displayStatus] || displayStatus;
-                            const displayDetails = displayStatus === 'INCONCLUSIVO' && (result?.details as any)?.error_message
-                              ? (result.details as any).error_message
-                              : `Like: ${result?.like_detected ? '✅' : '❌'} | Sub: ${result?.subscribe_detected ? '✅' : '❌'} | Confiança: ${Math.round((result?.confidence || 0) * 100)}%`;
-
-                            return (
-                              <div className={`text-xs p-2 rounded-lg mb-1 ${displayColor}`}>
-                                <p className="font-bold">{displayLabel}</p>
-                                <p className="text-[10px] mt-1 opacity-80">{displayDetails}</p>
-                              </div>
-                            );
-                          })()}
-                        </>
-                      )}
+                      ) : visualAnalysisResults[sub.id] ? (
+                        <div className={`text-xs p-2 rounded-lg mb-1 ${visualAnalysisResults[sub.id].status === 'CONFIRMADO' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
+                            visualAnalysisResults[sub.id].status === 'PROVAVEL' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
+                              'bg-red-500/20 text-red-400 border border-red-500/30'
+                          }`}>
+                          <p className="font-bold">
+                            {visualAnalysisResults[sub.id].status === 'CONFIRMADO' ? '✅ CONFIRMADO' :
+                              visualAnalysisResults[sub.id].status === 'PROVAVEL' ? '⚠️ PROVÁVEL' :
+                                visualAnalysisResults[sub.id].status === 'REJEITADO' ? '🚨 REJEITADO' : '⚠️ SUSPEITO'}
+                          </p>
+                        </div>
+                      ) : null}
                       <div className="flex gap-2">
                         {/* Analyze button */}
                         <Button
