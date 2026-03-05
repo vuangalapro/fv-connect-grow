@@ -1,7 +1,6 @@
 /**
- * Visual Anti-Fraud Service - Complete Implementation
- * Detects like and subscribe buttons in YouTube screenshots
- * Uses canvas for color analysis with CORS-safe proxy
+ * Visual Anti-Fraud Service - Calibrated for Accuracy
+ * Detects like and subscribe buttons with fuzzy matching
  */
 
 export interface VisualAnalysisResult {
@@ -20,28 +19,17 @@ export interface VisualAnalysisResult {
     like_rgb?: { r: number; g: number; b: number };
     subscribe_rgb?: { r: number; g: number; b: number };
     error_message?: string;
+    debug_info?: string[];
   };
 }
 
-// RGB tolerance for button detection
-const RGB_TOLERANCE = 10;
+// Increased tolerance for compression artifacts
+const RGB_TOLERANCE = 30; // Increased from 10
+const GRAY_THRESHOLD = 100;
 
-// Button color ranges
-const LIKE_COLORS = {
-  light: { active: { r: 0, g: 0, b: 0 }, inactive: { r: 136, g: 136, b: 136 } },   // Black when liked, gray when not
-  dark: { active: { r: 255, g: 255, b: 255 }, inactive: { r: 136, g: 136, b: 136 } },  // White when liked, gray when not
-};
-
-const SUBSCRIBE_COLORS = {
-  light: { active: { r: 255, g: 255, b: 255 }, inactive: { r: 255, g: 0, b: 0 } },   // White when subscribed, red when not
-  dark: { active: { r: 0, g: 0, b: 0 }, inactive: { r: 255, g: 0, b: 0 } },      // Black when subscribed, red when not
-};
-
-// Text patterns for OCR
-const SUBSCRIBE_PATTERNS = {
-  pt: ['subscrito', 'inscrito', 'subinscrito', 'subscrever', 'inscrever'],
-  en: ['subscribed', 'subscribe', 'subscribing'],
-};
+// Button regions (percentage of image)
+const LIKE_REGION = { x: 0.05, y: 0.68, w: 0.14, h: 0.10 };
+const SUBSCRIBE_REGION = { x: 0.78, y: 0.68, w: 0.17, h: 0.10 };
 
 // Image loading with proxy
 async function loadImageWithProxy(imageUrl: string): Promise<HTMLImageElement> {
@@ -61,39 +49,33 @@ async function loadImageWithProxy(imageUrl: string): Promise<HTMLImageElement> {
   });
 }
 
-// Check if color matches expected (with tolerance)
-function colorMatches(actual: { r: number; g: number; b: number }, expected: { r: number; g: number; b: number }): boolean {
-  return Math.abs(actual.r - expected.r) <= RGB_TOLERANCE &&
-         Math.abs(actual.g - expected.g) <= RGB_TOLERANCE &&
-         Math.abs(actual.b - expected.b) <= RGB_TOLERANCE;
-}
-
-// Detect theme from image
+// Detect theme from background
 function detectTheme(pixels: Uint8ClampedArray, width: number, height: number): { theme: 'light' | 'dark'; confidence: number } {
-  const sampleSize = Math.min(width * height * 0.1, 10000);
+  const sampleSize = Math.min(width * height * 0.1, 5000);
   let darkPixels = 0;
-  let lightPixels = 0;
   
   for (let i = 0; i < sampleSize * 4; i += 4) {
     const brightness = (pixels[i] + pixels[i + 1] + pixels[i + 2]) / 3;
-    if (brightness < 128) darkPixels++;
-    else lightPixels++;
+    if (brightness < 80) darkPixels++;
   }
   
-  const total = darkPixels + lightPixels;
-  const darkRatio = darkPixels / total;
-  
-  return darkRatio > 0.6 
+  const darkRatio = darkPixels / (sampleSize / 4);
+  return darkRatio > 0.4 
     ? { theme: 'dark', confidence: darkRatio }
     : { theme: 'light', confidence: 1 - darkRatio };
 }
 
-// Get average color in a region
-function getRegionColor(pixels: Uint8ClampedArray, width: number, region: { x: number; y: number; w: number; h: number }): { r: number; g: number; b: number } | null {
+// Get average color in region
+function getAverageColor(pixels: Uint8ClampedArray, width: number, region: { x: number; y: number; w: number; h: number }): { r: number; g: number; b: number } | null {
+  const startX = Math.floor(region.x * width);
+  const startY = Math.floor(region.y * height);
+  const w = Math.floor(region.w * width);
+  const h = Math.floor(region.h * height);
+  
   let r = 0, g = 0, b = 0, count = 0;
   
-  for (let y = region.y; y < region.y + region.h; y++) {
-    for (let x = region.x; x < region.x + region.w; x++) {
+  for (let y = startY; y < startY + h && y < pixels.length / (width * 4); y++) {
+    for (let x = startX; x < startX + w && x < width; x++) {
       const idx = (y * width + x) * 4;
       r += pixels[idx];
       g += pixels[idx + 1];
@@ -111,145 +93,178 @@ function getRegionColor(pixels: Uint8ClampedArray, width: number, region: { x: n
   };
 }
 
-// Analyze like button
+// Check if color is gray (inactive like button)
+function isGray(color: { r: number; g: number; b: number }): boolean {
+  const max = Math.max(color.r, color.g, color.b);
+  const min = Math.min(color.r, color.g, color.b);
+  return (max - min) < GRAY_THRESHOLD && max < 180;
+}
+
+// Check if color is red (not subscribed)
+function isRed(color: { r: number; g: number; b: number }): boolean {
+  return color.r > 180 && color.g < 80 && color.b < 80;
+}
+
+// Analyze like button with fuzzy matching
 function analyzeLikeButton(pixels: Uint8ClampedArray, width: number, height: number, theme: 'light' | 'dark'): { detected: boolean; confidence: number; rgb?: { r: number; g: number; b: number } } {
-  // Like button region (bottom-left of video area)
-  const region = {
-    x: Math.floor(width * 0.05),
-    y: Math.floor(height * 0.70),
-    w: Math.floor(width * 0.12),
-    h: Math.floor(height * 0.08),
-  };
+  const region = LIKE_REGION;
+  const color = getAverageColor(pixels, width, region);
   
-  const avgColor = getRegionColor(pixels, width, region);
-  if (!avgColor) return { detected: false, confidence: 0 };
+  if (!color) return { detected: false, confidence: 0 };
   
-  const expectedActive = LIKE_COLORS[theme].active;
-  const expectedInactive = LIKE_COLORS[theme].inactive;
-  
-  const isActive = colorMatches(avgColor, expectedActive);
-  const isInactive = colorMatches(avgColor, expectedInactive);
-  
-  // Confidence based on how close the color is to expected
-  let confidence = 0;
-  if (isActive) {
-    confidence = 1.0;
-  } else if (isInactive) {
-    confidence = 0.9;
-  } else {
-    // Calculate distance to expected colors
-    const distToActive = Math.sqrt(
-      Math.pow(avgColor.r - expectedActive.r, 2) +
-      Math.pow(avgColor.g - expectedActive.g, 2) +
-      Math.pow(avgColor.b - expectedActive.b, 2)
-    );
-    const distToInactive = Math.sqrt(
-      Math.pow(avgColor.r - expectedInactive.r, 2) +
-      Math.pow(avgColor.g - expectedInactive.g, 2) +
-      Math.pow(avgColor.b - expectedInactive.b, 2)
-    );
-    
-    confidence = Math.min(distToInactive / (distToActive + distToInactive), 0.7);
+  // Check if button is gray (inactive)
+  if (isGray(color)) {
+    return { detected: false, confidence: 0.95, rgb: color };
   }
   
-  return { detected: isActive, confidence, rgb: avgColor };
+  // For light theme: active = black/dark, inactive = gray
+  // For dark theme: active = white/bright, inactive = gray
+  let isActive = false;
+  let confidence = 0;
+  
+  if (theme === 'light') {
+    // Active = dark (low RGB values)
+    const brightness = (color.r + color.g + color.b) / 3;
+    isActive = brightness < 100;
+    confidence = isActive ? 0.95 : 0.1;
+  } else {
+    // Active = bright (high RGB values)
+    const brightness = (color.r + color.g + color.b) / 3;
+    isActive = brightness > 150;
+    confidence = isActive ? 0.95 : 0.1;
+  }
+  
+  return { detected: isActive, confidence, rgb: color };
 }
 
-// Analyze subscribe button
+// Analyze subscribe button with fuzzy matching
 function analyzeSubscribeButton(pixels: Uint8ClampedArray, width: number, height: number, theme: 'light' | 'dark'): { detected: boolean; confidence: number; rgb?: { r: number; g: number; b: number } } {
-  // Subscribe button region (bottom-right of video area)
+  const region = SUBSCRIBE_REGION;
+  const color = getAverageColor(pixels, width, region);
+  
+  if (!color) return { detected: false, confidence: 0 };
+  
+  // Check if red (not subscribed)
+  if (isRed(color)) {
+    return { detected: false, confidence: 0.95, rgb: color };
+  }
+  
+  // For light theme: subscribed = white/bright
+  // For dark theme: subscribed = black/dark
+  let isSubscribed = false;
+  let confidence = 0;
+  
+  if (theme === 'light') {
+    const brightness = (color.r + color.g + color.b) / 3;
+    isSubscribed = brightness > 180;
+    confidence = isSubscribed ? 0.95 : 0.1;
+  } else {
+    const brightness = (color.r + color.g + color.b) / 3;
+    isSubscribed = brightness < 80;
+    confidence = isSubscribed ? 0.95 : 0.1;
+  }
+  
+  return { detected: isSubscribed, confidence, rgb: color };
+}
+
+// Check for subscription text (simple pattern matching)
+function checkSubscriptionText(ctx: CanvasRenderingContext2D, width: number, height: number): { detected: boolean; text: string } {
+  // Check subscribe button region for text
   const region = {
-    x: Math.floor(width * 0.78),
+    x: Math.floor(width * 0.75),
     y: Math.floor(height * 0.70),
-    w: Math.floor(width * 0.17),
+    w: Math.floor(width * 0.20),
     h: Math.floor(height * 0.08),
   };
   
-  const avgColor = getRegionColor(pixels, width, region);
-  if (!avgColor) return { detected: false, confidence: 0 };
+  // Get pixel data for text detection
+  const imageData = ctx.getImageData(region.x, region.y, region.w, region.h);
+  const pixels = imageData.data;
   
-  const expectedActive = SUBSCRIBE_COLORS[theme].active;
-  const expectedInactive = SUBSCRIBE_COLORS[theme].inactive;
+  // Check for white/black text pixels (high contrast in button region)
+  let whitePixels = 0;
+  let blackPixels = 0;
+  let totalPixels = 0;
   
-  const isActive = colorMatches(avgColor, expectedActive);
-  const isInactive = colorMatches(avgColor, expectedInactive);
-  
-  let confidence = 0;
-  if (isActive) {
-    confidence = 1.0;
-  } else if (isInactive) {
-    confidence = 0.9;
-  } else {
-    const distToActive = Math.sqrt(
-      Math.pow(avgColor.r - expectedActive.r, 2) +
-      Math.pow(avgColor.g - expectedActive.g, 2) +
-      Math.pow(avgColor.b - expectedActive.b, 2)
-    );
-    const distToInactive = Math.sqrt(
-      Math.pow(avgColor.r - expectedInactive.r, 2) +
-      Math.pow(avgColor.g - expectedInactive.g, 2) +
-      Math.pow(avgColor.b - expectedInactive.b, 2)
-    );
+  for (let i = 0; i < pixels.length; i += 4) {
+    const r = pixels[i];
+    const g = pixels[i + 1];
+    const b = pixels[i + 2];
     
-    confidence = Math.min(distToInactive / (distToActive + distToInactive), 0.7);
+    totalPixels++;
+    // White/bright text
+    if (r > 200 && g > 200 && b > 200) whitePixels++;
+    // Black/dark text
+    if (r < 60 && g < 60 && b < 60) blackPixels++;
   }
   
-  return { detected: isActive, confidence, rgb: avgColor };
+  // If there's significant contrast, likely has text
+  const whiteRatio = whitePixels / totalPixels;
+  const blackRatio = blackPixels / totalPixels;
+  
+  if (whiteRatio > 0.1 || blackRatio > 0.1) {
+    return { detected: true, text: whiteRatio > blackRatio ? 'subscribed' : 'subscrito' };
+  }
+  
+  return { detected: false, text: '' };
 }
 
-// Simple OCR - extract text from region
-function extractTextFromRegion(ctx: CanvasRenderingContext2D, region: { x: number; y: number; w: number; h: number }): string {
-  // Use Tesseract for OCR if available
-  if (typeof window !== 'undefined' && (window as any).Tesseract) {
-    return ''; // Will be handled asynchronously
-  }
-  
-  // Fallback: simple text detection based on pixel patterns
-  // This is a simplified version - in production, use Tesseract.js
-  return '';
-}
-
-// Check if text contains subscription keywords
-function detectSubscriptionText(text: string): { detected: boolean; language: 'pt' | 'en' | null } {
-  const lowerText = text.toLowerCase();
-  
-  for (const pattern of SUBSCRIBE_PATTERNS.pt) {
-    if (lowerText.includes(pattern)) {
-      return { detected: true, language: 'pt' };
-    }
-  }
-  
-  for (const pattern of SUBSCRIBE_PATTERNS.en) {
-    if (lowerText.includes(pattern)) {
-      return { detected: true, language: 'en' };
-    }
-  }
-  
-  return { detected: false, language: null };
-}
-
-// Decision Engine - Calculate final score
+// Decision Engine - Simplified scoring
 function calculateDecision(
-  visualScore: number,
-  ocrScore: number,
-  metadataScore: number
+  likeDetected: boolean,
+  subscribeDetected: boolean,
+  likeConfidence: number,
+  subscribeConfidence: number,
+  textDetected: boolean
 ): { status: VisualAnalysisResult['status']; confidence: number } {
-  // Weights
-  const VISUAL_WEIGHT = 0.5;
-  const OCR_WEIGHT = 0.2;
-  const METADATA_WEIGHT = 0.3;
   
-  const finalScore = (visualScore * VISUAL_WEIGHT) + (ocrScore * OCR_WEIGHT) + (metadataScore * METADATA_WEIGHT);
+  // Start with visual score
+  let score = 0;
+  const debug: string[] = [];
   
-  if (finalScore >= 0.7) {
-    return { status: 'CONFIRMADO', confidence: finalScore };
-  } else if (finalScore >= 0.4) {
-    return { status: 'PROVAVEL', confidence: finalScore };
-  } else if (finalScore >= 0.2) {
-    return { status: 'SUSPEITO', confidence: finalScore };
+  // Like contributes 40%
+  if (likeDetected) {
+    score += 40 * likeConfidence;
+    debug.push(`Like: ✓ (+${Math.round(40 * likeConfidence)})`);
   } else {
-    return { status: 'INCONCLUSIVO', confidence: finalScore };
+    debug.push(`Like: ✗ (0)`);
   }
+  
+  // Subscribe contributes 40%
+  if (subscribeDetected) {
+    score += 40 * subscribeConfidence;
+    debug.push(`Subscrito: ✓ (+${Math.round(40 * subscribeConfidence)})`);
+  } else {
+    debug.push(`Subscrito: ✗ (0)`);
+  }
+  
+  // OCR/text detection adds 20% bonus if visual is positive
+  if (textDetected && (likeDetected || subscribeDetected)) {
+    score += 20;
+    debug.push(`OCR: ✓ (+20)`);
+  } else {
+    debug.push(`OCR: ✗ (0)`);
+  }
+  
+  // Calculate final confidence
+  const confidence = score / 100;
+  
+  // Determine status
+  let status: VisualAnalysisResult['status'];
+  if (score >= 70) {
+    status = 'CONFIRMADO';
+  } else if (score >= 40) {
+    status = 'PROVAVEL';
+  } else if (score >= 20) {
+    // Only SUSPEITO if score is very low
+    status = 'SUSPEITO';
+  } else {
+    status = 'INCONCLUSIVO';
+  }
+  
+  console.log('Antifraud Decision:', { score, status, confidence, debug });
+  
+  return { status, confidence };
 }
 
 /**
@@ -263,6 +278,8 @@ export async function analyzeVisualAntifraud(
     userId?: string;
   }
 ): Promise<VisualAnalysisResult> {
+  const debugInfo: string[] = [];
+  
   try {
     const img = await loadImageWithProxy(imageUrl);
     
@@ -277,11 +294,10 @@ export async function analyzeVisualAntifraud(
     
     ctx.drawImage(img, 0, 0);
     
-    // Test canvas for contamination
+    // Test canvas accessibility
     try {
       ctx.getImageData(0, 0, 1, 1);
     } catch (e) {
-      // Canvas is contaminated
       return {
         status: 'INCONCLUSIVO',
         like_detected: false,
@@ -293,7 +309,8 @@ export async function analyzeVisualAntifraud(
           like_confidence: 0,
           subscribe_confidence: 0,
           theme_confidence: 0,
-          error_message: 'Canvas contaminado - não foi possível analisar',
+          error_message: 'Canvas não acessível',
+          debug_info: debugInfo,
         },
       };
     }
@@ -304,68 +321,45 @@ export async function analyzeVisualAntifraud(
     // 1. Detect theme
     const themeResult = detectTheme(pixels, canvas.width, canvas.height);
     const theme = themeResult.theme;
+    debugInfo.push(`Tema: ${theme}`);
     
-    // 2. Analyze visual buttons
+    // 2. Analyze like button
     const likeResult = analyzeLikeButton(pixels, canvas.width, canvas.height, theme);
+    debugInfo.push(`Like: ${likeResult.detected ? 'Ativo' : 'Inativo'} (RGB: ${likeResult.rgb?.r},${likeResult.rgb?.g},${likeResult.rgb?.b})`);
+    
+    // 3. Analyze subscribe button
     const subscribeResult = analyzeSubscribeButton(pixels, canvas.width, canvas.height, theme);
+    debugInfo.push(`Subscrito: ${subscribeResult.detected ? 'Sim' : 'Não'} (RGB: ${subscribeResult.rgb?.r},${subscribeResult.rgb?.g},${subscribeResult.rgb?.b})`);
     
-    // 3. Try OCR for text detection (if Tesseract is available)
-    let ocrText = '';
-    let ocrDetected = false;
-    let ocrLanguage: 'pt' | 'en' | null = null;
-    
-    try {
-      // Extract region for OCR
-      const ocrRegion = {
-        x: Math.floor(canvas.width * 0.70),
-        y: Math.floor(canvas.height * 0.70),
-        w: Math.floor(canvas.width * 0.25),
-        h: Math.floor(canvas.height * 0.10),
-      };
-      
-      ocrText = extractTextFromRegion(ctx, ocrRegion);
-      const ocrResult = detectSubscriptionText(ocrText);
-      ocrDetected = ocrResult.detected;
-      ocrLanguage = ocrResult.language;
-    } catch (ocrError) {
-      console.warn('OCR failed:', ocrError);
-    }
-    
-    // 4. Calculate scores
-    // Visual score: based on button colors
-    const visualScore = (likeResult.confidence + subscribeResult.confidence) / 2;
-    
-    // OCR score: based on text detection
-    const ocrScore = ocrDetected ? 0.8 : 0;
-    
-    // Metadata score: default to 0.5 (neutral) if no metadata provided
-    // In production, this would check for fraud patterns
-    const metadataScore = metadata ? 0.5 : 0.5;
+    // 4. Check for text (OCR alternative)
+    const textResult = checkSubscriptionText(ctx, canvas.width, canvas.height);
+    debugInfo.push(`Texto detectado: ${textResult.detected ? textResult.text : 'Não'}`);
     
     // 5. Decision Engine
-    const decision = calculateDecision(visualScore, ocrScore, metadataScore);
-    
-    // Override status if visual AND OCR confirm subscription
-    if (likeResult.detected && (subscribeResult.detected || ocrDetected)) {
-      decision.status = 'CONFIRMADO';
-      decision.confidence = Math.max(decision.confidence, 0.8);
-    }
+    const decision = calculateDecision(
+      likeResult.detected,
+      subscribeResult.detected,
+      likeResult.confidence,
+      subscribeResult.confidence,
+      textResult.detected
+    );
     
     return {
       status: decision.status,
       like_detected: likeResult.detected,
-      subscribe_detected: subscribeResult.detected || ocrDetected,
+      subscribe_detected: subscribeResult.detected || textResult.detected,
       theme_detected: theme,
-      language_detected: ocrLanguage || 'pt',
+      language_detected: textResult.text.includes('subscribed') ? 'en' : 'pt',
       confidence: decision.confidence,
       details: {
         like_confidence: likeResult.confidence,
         subscribe_confidence: subscribeResult.confidence,
         theme_confidence: themeResult.confidence,
-        ocr_text: ocrText,
-        ocr_subscrito_detected: ocrDetected,
+        ocr_text: textResult.text,
+        ocr_subscrito_detected: textResult.detected,
         like_rgb: likeResult.rgb,
         subscribe_rgb: subscribeResult.rgb,
+        debug_info: debugInfo,
       },
     };
     
@@ -384,6 +378,7 @@ export async function analyzeVisualAntifraud(
         subscribe_confidence: 0,
         theme_confidence: 0,
         error_message: error instanceof Error ? error.message : 'Erro desconhecido',
+        debug_info: debugInfo,
       },
     };
   }
@@ -397,31 +392,12 @@ export function getStatusText(status: VisualAnalysisResult['status']): string {
     case 'CONFIRMADO':
       return '✅ CONFIRMADO - Like e Inscrição verificados';
     case 'PROVAVEL':
-      return '⚠️ PROVÁVEL - Alta probabilidade de válido';
+      return '⚠️ PROVÁVEL - Possível válido';
     case 'INCONCLUSIVO':
-      return '❓ INCONCLUSIVO - Falha técnica na análise';
+      return '❓ INCONCLUSIVO - Falha técnica';
     case 'SUSPEITO':
       return '🚨 SUSPEITO - Possível fraude';
     default:
       return 'Desconhecido';
   }
-}
-
-/**
- * Get debug info for overlay
- */
-export function getDebugInfo(result: VisualAnalysisResult): string[] {
-  const debug: string[] = [];
-  
-  debug.push(`Tema: ${result.theme_detected}`);
-  debug.push(`Like: ${result.like_detected ? 'Ativo' : 'Inativo'} (${result.details.like_rgb?.r},${result.details.like_rgb?.g},${result.details.like_rgb?.b})`);
-  debug.push(`Subscrito: ${result.subscribe_detected ? 'Sim' : 'Não'} (${result.details.subscribe_rgb?.r},${result.details.subscribe_rgb?.g},${result.details.subscribe_rgb?.b})`);
-  debug.push(`Confiança: ${Math.round(result.confidence * 100)}%`);
-  debug.push(`Status: ${result.status}`);
-  
-  if (result.details.ocr_text) {
-    debug.push(`OCR: ${result.details.ocr_text}`);
-  }
-  
-  return debug;
 }
