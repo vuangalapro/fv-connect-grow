@@ -39,8 +39,8 @@ export interface VisualAnalysisResult {
 const RGB_TOLERANCE = 15;
 const GRAY_THRESHOLD = 80;
 
-// Template matching threshold (85%)
-const TEMPLATE_THRESHOLD = 0.85;
+// Template matching threshold (65% - more tolerant)
+const TEMPLATE_THRESHOLD = 0.65;
 
 // Button regions - adjusted coordinates for YouTube UI
 const LIKE_REGION = { x: 0.80, y: 0.05, w: 0.05, h: 0.02 };
@@ -460,7 +460,7 @@ function checkSubscriptionText(
   return { detected: false, text: '' };
 }
 
-// Decision Engine - Final version
+// Decision Engine - Optimized version
 function calculateDecision(
   likeDetected: boolean,
   subscribeDetected: boolean,
@@ -480,15 +480,8 @@ function calculateDecision(
   metadata_alert: boolean;
 } {
 
-  console.log("=== Decision Engine ===");
-  console.log("Context Valid:", contextValid);
-  console.log("Like Detected:", likeDetected);
-  console.log("Subscribe Detected:", subscribeDetected);
-  console.log("OCR Text Detected:", textDetected);
-
   // If context invalid (not YouTube screenshot), immediately SUSPEITO
   if (!contextValid) {
-    console.log("Contexto inválido: imagem não contém player do YouTube");
     return {
       status: 'SUSPEITO',
       confidence: 0,
@@ -502,19 +495,16 @@ function calculateDecision(
   let likeScore = 0;
   let subscribeScore = 0;
 
-  // Like contributes 50%
+  // Like contributes 50% - binary (detected or not)
   if (likeDetected) {
     likeScore = 50;
     visualScore += likeScore;
   }
 
-  // Subscribe contributes 50% (only if both template and OCR detected)
-  if (subscribeDetected && textDetected) {
+  // Subscribe: Template OR OCR is sufficient (not AND)
+  // OCR never penalizes - if template detected OR OCR detected, give full 50%
+  if (subscribeDetected || textDetected) {
     subscribeScore = 50;
-    visualScore += subscribeScore;
-  } else if (subscribeDetected && !textDetected) {
-    // Template detected but OCR failed - partial match
-    subscribeScore = 25;
     visualScore += subscribeScore;
   }
 
@@ -524,25 +514,20 @@ function calculateDecision(
   // Calculate confidence
   const confidence = visualScore / 100;
 
-  // Determine status
+  // Determine status - final optimized version
   let status: VisualAnalysisResult['status'];
-  if (visualScore === 100) {
+  if (visualScore >= 90) {
     status = 'CONFIRMADO';
-  } else if (visualScore >= 50 && (likeDetected || subscribeDetected)) {
-    // PROVAVEL only if template partially detected
+  } else if (visualScore >= 50) {
     status = 'PROVAVEL';
   } else {
-    // Random captures or no detection
     status = 'SUSPEITO';
   }
 
-  console.log('Antifraud Decision:', {
-    visualScore,
-    status,
-    confidence,
-    metadata_alert,
-    score_breakdown: { like_score: likeScore, subscribe_score: subscribeScore, total_score: visualScore }
-  });
+  // Protection rule: if any legitimate signal exists but status is SUSPEITO, upgrade to PROVAVEL
+  if ((likeDetected || subscribeDetected) && status === 'SUSPEITO') {
+    status = 'PROVAVEL';
+  }
 
   return {
     status,
