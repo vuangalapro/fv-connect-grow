@@ -451,7 +451,7 @@ const AdminDashboard = () => {
         .update({ fraud_alert: result })
         .eq('id', sub.id);
 
-      toast.info(`Análise concluída: ${result === 'confiavel' ? '✅ Confiável' : result === 'suspeito' ? '✅ Confiável' : '🚨 Fraude'}`);
+      toast.info(`Análise concluída: ${result === 'confiavel' ? '✅ Confiável' : result === 'suspeito' ? '⚠️ Suspeito' : '🚨 Fraude'}`);
     } catch (error) {
       console.error('Error analyzing task:', error);
       toast.error('Erro ao analisar tarefa');
