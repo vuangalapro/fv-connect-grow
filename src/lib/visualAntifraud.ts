@@ -35,6 +35,17 @@ export interface VisualAnalysisResult {
   };
 }
 
+// Helper function to get status text
+export function getStatusText(status: FraudStatus): string {
+  const statusTexts: Record<FraudStatus, string> = {
+    'CONFIRMADO': '✅ CONFIRMADO',
+    'PROVAVEL': '⚠️ PROVÁVEL',
+    'INCONCLUSIVO': '❓ INCONCLUSIVO',
+    'SUSPEITO': '❌ SUSPEITO'
+  };
+  return statusTexts[status];
+}
+
 // RGB tolerance
 const RGB_TOLERANCE = 15;
 const GRAY_THRESHOLD = 80;
@@ -78,21 +89,21 @@ async function loadTemplate(url: string): Promise<HTMLImageElement | null> {
 // Load all templates
 async function loadTemplates(): Promise<void> {
   if (loadedTemplates) return;
-  
+
   const baseUrl = window.location.origin;
-  
+
   const [likeLight, likeDark, subsLight, subsDark] = await Promise.all([
     loadTemplate(`${baseUrl}/templates/like_template_light.png`),
     loadTemplate(`${baseUrl}/templates/like_template_dark.png`),
     loadTemplate(`${baseUrl}/templates/subscrito_template_light.png`),
     loadTemplate(`${baseUrl}/templates/subscrito_template_dark.png`)
   ]);
-  
+
   loadedTemplates = {
     like: { light: likeLight, dark: likeDark },
     subscribe: { light: subsLight, dark: subsDark }
   };
-  
+
   console.log("Templates loaded:", {
     likeLight: !!likeLight,
     likeDark: !!likeDark,
@@ -131,37 +142,37 @@ function compareImages(
   canvas.height = img2.height;
   const ctx = canvas.getContext('2d');
   if (!ctx) return 0;
-  
+
   ctx.drawImage(img2, 0, 0);
   const img2Data = ctx.getImageData(0, 0, img2.width, img2.height);
-  
+
   // Calculate similarity
   const width = Math.min(img1Data.width, img2.width);
   const height = Math.min(img1Data.height, img2.height);
-  
+
   let matchingPixels = 0;
   let totalPixels = 0;
-  
+
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
       const idx1 = (y * img1Data.width + x) * 4;
       const idx2 = (y * img2.width + x) * 4;
-      
+
       const r1 = img1Data.data[idx1];
       const g1 = img1Data.data[idx1 + 1];
       const b1 = img1Data.data[idx1 + 2];
-      
+
       const r2 = img2Data.data[idx2];
       const g2 = img2Data.data[idx2 + 1];
       const b2 = img2Data.data[idx2 + 2];
-      
+
       // Calculate color distance
       const distance = Math.sqrt(
         Math.pow(r1 - r2, 2) +
         Math.pow(g1 - g2, 2) +
         Math.pow(b1 - b2, 2)
       );
-      
+
       // If colors are similar (within tolerance)
       if (distance < 50) {
         matchingPixels++;
@@ -169,7 +180,7 @@ function compareImages(
       totalPixels++;
     }
   }
-  
+
   return totalPixels > 0 ? matchingPixels / totalPixels : 0;
 }
 
@@ -178,25 +189,25 @@ function detectYouTubeContext(pixels: Uint8ClampedArray, width: number, height: 
   let redPixels = 0;
   let darkCenterPixels = 0;
   let sampleSize = Math.min(width * height * 0.05, 2000);
-  
+
   // Check for YouTube red in the header area
   for (let i = 0; i < sampleSize * 4; i += 4) {
     const r = pixels[i];
     const g = pixels[i + 1];
     const b = pixels[i + 2];
-    
+
     // YouTube red (approximate)
     if (r > 200 && r < 255 && g > 50 && g < 100 && b < 50) {
       redPixels++;
     }
   }
-  
+
   // Check center region for video frame
   const centerStartX = Math.floor(width * 0.15);
   const centerEndX = Math.floor(width * 0.85);
   const centerStartY = Math.floor(height * 0.15);
   const centerEndY = Math.floor(height * 0.70);
-  
+
   for (let y = centerStartY; y < centerEndY; y += 10) {
     for (let x = centerStartX; x < centerEndX; x += 10) {
       const idx = (y * width + x) * 4;
@@ -208,13 +219,17 @@ function detectYouTubeContext(pixels: Uint8ClampedArray, width: number, height: 
       }
     }
   }
-  
-  const hasRedHeader = redPixels > 5;
-  const hasVideoFrame = darkCenterPixels > 20;
-  
+
+  const hasRedHeader = redPixels > 3; // Reduced from 5 to 3 for more tolerance
+  const hasVideoFrame = darkCenterPixels > 10; // Reduced from 20 to 10 for more tolerance
+
   console.log("YouTube Context:", { hasRedHeader, hasVideoFrame, redPixels, darkCenterPixels });
-  
-  return hasRedHeader || hasVideoFrame;
+
+  // Make context detection more lenient - accept if ANY indicator is present
+  // or if image is large enough (likely a screenshot)
+  const isLargeImage = width >= 800 && height >= 400;
+
+  return hasRedHeader || hasVideoFrame || isLargeImage;
 }
 
 // Detect theme from background
@@ -235,15 +250,15 @@ function detectTheme(pixels: Uint8ClampedArray, width: number, height: number): 
 
 // Get average color in region
 function getAverageColor(
-  pixels: Uint8ClampedArray, 
-  width: number, 
-  height: number, 
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
   region: { x: number; y: number; w: number; h: number }
 ): { r: number; g: number; b: number } | null {
-  
+
   const canvasWidth = width;
   const canvasHeight = height;
-  
+
   const x = Math.floor((region?.x || 0.80) * canvasWidth);
   const y = Math.floor((region?.y || 0.05) * canvasHeight);
   const w = Math.floor((region?.w || 0.05) * canvasWidth);
@@ -290,19 +305,19 @@ function isRed(color: { r: number; g: number; b: number }): boolean {
 
 // Template matching for like button
 function analyzeLikeButton(
-  pixels: Uint8ClampedArray, 
-  width: number, 
-  height: number, 
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
   theme: 'light' | 'dark',
   ctx: CanvasRenderingContext2D
 ): { detected: boolean; confidence: number; rgb?: { r: number; g: number; b: number } } {
-  
+
   const region = getLikeRegion();
   const x = Math.floor(region.x * width);
   const y = Math.floor(region.y * height);
   const w = Math.floor(region.w * width);
   const h = Math.floor(region.h * height);
-  
+
   // Get image data from region
   const regionData = ctx.getImageData(x, y, w, h);
   const color = getAverageColor(pixels, width, height, region);
@@ -323,7 +338,7 @@ function analyzeLikeButton(
     if (template) {
       const matchScore = compareImages(regionData, template, TEMPLATE_THRESHOLD);
       console.log("Like template match:", matchScore);
-      
+
       if (matchScore >= TEMPLATE_THRESHOLD) {
         return { detected: true, confidence: 0.95, rgb: color };
       }
@@ -351,19 +366,19 @@ function analyzeLikeButton(
 
 // Template matching for subscribe button
 function analyzeSubscribeButton(
-  pixels: Uint8ClampedArray, 
-  width: number, 
-  height: number, 
+  pixels: Uint8ClampedArray,
+  width: number,
+  height: number,
   theme: 'light' | 'dark',
   ctx: CanvasRenderingContext2D
 ): { detected: boolean; confidence: number; rgb?: { r: number; g: number; b: number } } {
-  
+
   const region = getSubscribeRegion();
   const x = Math.floor(region.x * width);
   const y = Math.floor(region.y * height);
   const w = Math.floor(region.w * width);
   const h = Math.floor(region.h * height);
-  
+
   const regionData = ctx.getImageData(x, y, w, h);
   const color = getAverageColor(pixels, width, height, region);
 
@@ -383,7 +398,7 @@ function analyzeSubscribeButton(
     if (template) {
       const matchScore = compareImages(regionData, template, TEMPLATE_THRESHOLD);
       console.log("Subscribe template match:", matchScore);
-      
+
       if (matchScore >= TEMPLATE_THRESHOLD) {
         return { detected: true, confidence: 0.95, rgb: color };
       }
@@ -411,18 +426,18 @@ function analyzeSubscribeButton(
 
 // OCR - Only runs if template detected
 function checkSubscriptionText(
-  ctx: CanvasRenderingContext2D, 
-  width: number, 
+  ctx: CanvasRenderingContext2D,
+  width: number,
   height: number,
   templateDetected: boolean
 ): { detected: boolean; text: string } {
-  
+
   // OCR only runs if button template was detected
   if (!templateDetected) {
     console.log("OCR: Não executado (template não detectado)");
     return { detected: false, text: '' };
   }
-  
+
   const region = {
     x: Math.floor(width * 0.80),
     y: Math.floor(height * 0.08),
@@ -469,25 +484,23 @@ function calculateDecision(
   textDetected: boolean,
   contextValid: boolean,
   metadataSuspect: boolean = false
-): { 
-  status: VisualAnalysisResult['status']; 
-  confidence: number; 
-  score_breakdown: { 
-    like_score: number; 
-    subscribe_score: number; 
-    total_score: number 
+): {
+  status: VisualAnalysisResult['status'];
+  confidence: number;
+  score_breakdown: {
+    like_score: number;
+    subscribe_score: number;
+    total_score: number
   };
   metadata_alert: boolean;
 } {
 
-  // If context invalid (not YouTube screenshot), immediately SUSPEITO
+  // If context invalid (not YouTube screenshot), still try to analyze visually
+  // Don't immediately return SUSPEITO - analyze what we can detect
+  let contextPenalty = false;
   if (!contextValid) {
-    return {
-      status: 'SUSPEITO',
-      confidence: 0,
-      score_breakdown: { like_score: 0, subscribe_score: 0, total_score: 0 },
-      metadata_alert: metadataSuspect
-    };
+    console.log("Context invalid - continuing with visual analysis anyway");
+    contextPenalty = true;
   }
 
   // Visual score: Like 50% + Subscribe 50%
@@ -514,20 +527,34 @@ function calculateDecision(
   // Calculate confidence
   const confidence = visualScore / 100;
 
-  // Determine status - final optimized version
+  // Determine status - more lenient thresholds
   let status: VisualAnalysisResult['status'];
+
+  // If we have ANY positive signal, always at least PROVAVEL
   if (visualScore >= 90) {
     status = 'CONFIRMADO';
-  } else if (visualScore >= 50) {
+  } else if (visualScore >= 30) { // Reduced from 50 to 30 for more tolerance
+    status = 'PROVAVEL';
+  } else if (likeDetected || subscribeDetected || textDetected) {
+    // Even with 0 score, if we detected something, give PROVAVEL
     status = 'PROVAVEL';
   } else {
     status = 'SUSPEITO';
   }
 
-  // Protection rule: if any legitimate signal exists but status is SUSPEITO, upgrade to PROVAVEL
-  if ((likeDetected || subscribeDetected) && status === 'SUSPEITO') {
+  // If context was invalid but we have any visual detection, upgrade
+  if (contextPenalty && (likeDetected || subscribeDetected) && status === 'SUSPEITO') {
     status = 'PROVAVEL';
   }
+
+  console.log("Decision:", {
+    visualScore,
+    likeDetected,
+    subscribeDetected,
+    textDetected,
+    contextValid,
+    status
+  });
 
   return {
     status,
@@ -554,7 +581,7 @@ export async function analyzeVisualAntifraud(
   try {
     // Load templates first
     await loadTemplates();
-    
+
     const img = await loadImageWithProxy(imageUrl);
 
     const canvas = document.createElement('canvas');

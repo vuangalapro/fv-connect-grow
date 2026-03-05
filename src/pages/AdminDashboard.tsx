@@ -1,13 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle, Loader2, RefreshCw, Youtube, Ban } from 'lucide-react';
+import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle, Loader2, RefreshCw, Youtube } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
-import { analyzeVisualAntifraud, VisualAnalysisResult } from '@/lib/visualAntifraud';
+import { analyzeVisualAntifraud, getStatusText, VisualAnalysisResult } from '@/lib/visualAntifraud';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, ChartLegend, ChartLegendContent } from '@/components/ui/chart';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 
@@ -115,8 +115,6 @@ const AdminDashboard = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [adSearchQuery, setAdSearchQuery] = useState('');
-  const [showBlockedPanel, setShowBlockedPanel] = useState(false);
-  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [processingOCR, setProcessingOCR] = useState<Record<string, boolean>>({});
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -399,32 +397,7 @@ const AdminDashboard = () => {
         details.push(`⚠️ Sem captura de ecrã carregada`);
       }
 
-      // 7. Include visual analysis result as positive factor
-      const visualResult = visualAnalysisResults[sub.id];
-      if (visualResult) {
-        if (visualResult.status === 'CONFIRMADO') {
-          // Visual analysis confirms like and subscribe - reduce risk score
-          riskScore = Math.max(0, riskScore - 40);
-          details.push('✅ Análise visual: CONFIRMADO (Like + Inscrito)');
-        } else if (visualResult.status === 'PROVAVEL') {
-          // Partial confirmation - reduce risk slightly
-          riskScore = Math.max(0, riskScore - 20);
-          details.push('⚠️ Análise visual: PROVÁVEL');
-        } else if (visualResult.status === 'SUSPEITO') {
-          // Visual analysis indicates suspicious - add to risk
-          riskScore += 20;
-          details.push('❌ Análise visual: SUSPEITO');
-        } else if (visualResult.status === 'INCONCLUSIVO') {
-          // No visual analysis available
-          riskScore += 10;
-          details.push('⚠️ Análise visual: INCONCLUSIVO');
-        }
-      } else {
-        // No visual analysis done yet
-        details.push('ℹ️ Análise visual: Não executada');
-      }
-
-      // 8. Check for existing fraud alerts on user's submissions
+      // 7. Check for existing fraud alerts on user's submissions
       const userFraudAlerts = allSubmissions?.filter(
         s => s.user_id === sub.user_id && s.fraud_alert === 'suspeita'
       ) || [];
@@ -487,7 +460,6 @@ const AdminDashboard = () => {
     }
 
     setIsAnalyzingVisual(sub.id);
-    toast.info('🔄 A analisar captura de ecrã... Por favor aguarde.');
 
     try {
       let imageUrl: string;
@@ -511,13 +483,7 @@ const AdminDashboard = () => {
       }));
 
       // Show result to admin with clear status
-      const statusMessages: Record<string, string> = {
-        'CONFIRMADO': '✅ Análise Visual: CONFIRMADO - Like e Inscrito detectados!',
-        'PROVAVEL': '⚠️ Análise Visual: PROVÁVEL - Alguns elementos podem estar ausentes',
-        'SUSPEITO': '❌ Análise Visual: SUSPEITO - Elementos não detectados',
-        'INCONCLUSIVO': '❓ Análise Visual: INCONCLUSIVO - Não foi possível analisar'
-      };
-      toast.info(statusMessages[result.status] || 'Análise concluída');
+      toast.info(getStatusText(result.status));
     } catch (error) {
       console.error('Visual Analysis Error:', error);
       toast.error('Erro ao analisar captura de ecrã');
@@ -834,7 +800,7 @@ const AdminDashboard = () => {
       await supabase.from('visual_analysis_audit').delete().eq('task_id', taskId);
       await supabase.from('video_clicks').delete().eq('task_id', taskId);
       await supabase.from('task_submissions').delete().eq('task_id', taskId);
-
+      
       // Then delete the task
       const { error } = await supabase.from('tasks').delete().eq('id', taskId);
       if (error) throw error;
@@ -1582,37 +1548,14 @@ const AdminDashboard = () => {
               </Button>
             </div>
             <h2 className="text-2xl font-bold mb-4 font-display">Utilizadores Registados ({users.length})</h2>
-            <div className="flex items-center gap-4 mb-4">
-              <div className="relative flex-1 max-w-md">
-                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  placeholder="Pesquisar por nome, email ou telefone..."
-                  value={searchQuery}
-                  onChange={e => setSearchQuery(e.target.value)}
-                  className="bg-secondary/50 pl-10"
-                />
-              </div>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={async () => {
-                  // Close user detail panel first
-                  setSelectedUser(null);
-                  // Fetch users with penalty_credit < 20
-                  const { data: allProfiles } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .order('penalty_credit', { ascending: true });
-                  
-                  const blocked = (allProfiles || []).filter(p => (p.penalty_credit || 100) < 20);
-                  setBlockedUsers(blocked);
-                  setShowBlockedPanel(true);
-                }}
-                className="gap-2"
-              >
-                <Ban size={16} />
-                Lista de Bloqueios ({users.filter(u => (u.penalty_credit || 100) < 20).length})
-              </Button>
+            <div className="relative mb-4 max-w-md">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                placeholder="Pesquisar por nome, email ou telefone..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="bg-secondary/50 pl-10"
+              />
             </div>
             <div className="space-y-2">
               {filteredUsers.map(u => (
@@ -1661,231 +1604,6 @@ const AdminDashboard = () => {
                 </button>
               ))}
               {filteredUsers.length === 0 && !isLoading && <p className="text-muted-foreground">Nenhum utilizador encontrado</p>}
-            </div>
-          </div>
-        )}
-
-        {/* BLOCKED USERS PANEL */}
-        {showBlockedPanel && (
-          <div className="fixed inset-0 bg-black/80 z-50 overflow-y-auto">
-            <div className="min-h-screen p-4 md:p-8">
-              <div className="max-w-4xl mx-auto">
-                <div className="flex items-center justify-between mb-6">
-                  <button 
-                    onClick={() => setShowBlockedPanel(false)} 
-                    className="flex items-center gap-2 text-white hover:text-primary text-sm"
-                  >
-                    <ArrowLeft size={16} /> Voltar
-                  </button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      const { data: allProfiles } = await supabase
-                        .from('profiles')
-                        .select('*')
-                        .order('penalty_credit', { ascending: true });
-                      const blocked = (allProfiles || []).filter(p => (p.penalty_credit || 100) < 20);
-                      setBlockedUsers(blocked);
-                      toast.success('Lista atualizada');
-                    }}
-                    className="gap-2"
-                  >
-                    <RefreshCw size={16} />
-                    Atualizar
-                  </Button>
-                </div>
-                <h2 className="text-2xl font-bold mb-6 font-display text-white">Lista de Bloqueios ({blockedUsers.length})</h2>
-                <div className="space-y-2">
-                  {blockedUsers.map(u => (
-                    <div key={u.id} className="glass rounded-lg p-4 flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">{u.full_name || 'Sem nome'}</p>
-                        <p className="text-sm text-muted-foreground">{u.email}</p>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <div className="text-right">
-                          <p className="text-xs text-muted-foreground">Crédito de Penalidades</p>
-                          <div className="flex items-center gap-2">
-                            <div className="w-24 h-2 bg-red-500/20 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-red-500 rounded-full" 
-                                style={{ width: `${Math.min(100, ((u.penalty_credit || 0) / 20) * 100)}%` }}
-                              />
-                            </div>
-                            <span className="text-sm font-bold text-red-500">{u.penalty_credit || 0}</span>
-                          </div>
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <input
-                            type="number"
-                            defaultValue={u.penalty_credit || 0}
-                            className="bg-secondary/50 border border-white/10 rounded px-2 py-1 text-sm w-20 text-center"
-                            onBlur={async (e) => {
-                              const newCredit = parseInt(e.target.value) || 0;
-                              await supabase.from('profiles').update({ penalty_credit: newCredit }).eq('id', u.id);
-                              const updated = blockedUsers.map(user => 
-                                user.id === u.id ? { ...user, penalty_credit: newCredit } : user
-                              );
-                              setBlockedUsers(updated);
-                              toast.success('Crédito atualizado');
-                            }}
-                          />
-                          {(u.penalty_credit || 0) >= 20 ? (
-                            <Button
-                              variant="destructive"
-                              size="sm"
-                              onClick={async () => {
-                                const { error } = await supabase
-                                  .from('profiles')
-                                  .update({ penalty_credit: 0 })
-                                  .eq('id', u.id);
-                                if (!error) {
-                                  toast.success('Utilizador bloqueado com sucesso');
-                                  const updated = blockedUsers.map(user => 
-                                    user.id === u.id ? { ...user, penalty_credit: 0 } : user
-                                  );
-                                  setBlockedUsers(updated);
-                                }
-                              }}
-                            >
-                              Bloquear
-                            </Button>
-                          ) : (
-                            <Button
-                              variant="default"
-                              size="sm"
-                              onClick={async () => {
-                                const { error } = await supabase
-                                  .from('profiles')
-                                  .update({ penalty_credit: 100 })
-                                  .eq('id', u.id);
-                                if (!error) {
-                                  toast.success('Utilizador desbloqueado com sucesso');
-                                  const updated = blockedUsers.filter(user => user.id !== u.id);
-                                  setBlockedUsers(updated);
-                                }
-                              }}
-                            >
-                              Desbloquear
-                            </Button>
-                          )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="text-red-500 border-red-500 hover:bg-red-500 hover:text-white"
-                            onClick={async () => {
-                              if (!confirm(`Tem certeza que deseja banir permanentemente ${u.full_name || u.email}? Esta ação não pode ser desfeita.`)) return;
-                              
-                              // Delete all related records first
-                              await supabase.from('task_submissions').delete().eq('user_id', u.id);
-                              await supabase.from('watch_sessions').delete().eq('user_id', u.id);
-                              await supabase.from('withdrawals').delete().eq('user_id', u.id);
-                              await supabase.from('support_messages').delete().eq('user_id', u.id);
-                              // Delete the user profile
-                              await supabase.from('profiles').delete().eq('id', u.id);
-                              // Delete auth user
-                              await supabase.auth.admin.deleteUser(u.id);
-                              
-                              toast.success('Utilizador banido permanentemente');
-                              const updated = blockedUsers.filter(user => user.id !== u.id);
-                              setBlockedUsers(updated);
-                            }}
-                          >
-                            Banir Permanentemente
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  {blockedUsers.length === 0 && <p className="text-muted-foreground">Nenhum utilizador bloqueado</p>}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <p className="text-xs text-muted-foreground">Crédito de Penalidades</p>
-                      <div className="flex items-center gap-2">
-                        <div className="w-24 h-2 bg-red-500/20 rounded-full overflow-hidden">
-                          <div 
-                            className="h-full bg-red-500 rounded-full" 
-                            style={{ width: `${Math.min(100, ((u.penalty_credit || 0) / 20) * 100)}%` }}
-                          />
-                        </div>
-                        <span className="text-sm font-bold text-red-500">{u.penalty_credit || 0}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {(u.penalty_credit || 0) >= 20 ? (
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={async () => {
-                            const { error } = await supabase
-                              .from('profiles')
-                              .update({ penalty_credit: 0 })
-                              .eq('id', u.id);
-                            if (!error) {
-                              toast.success('Utilizador bloqueado com sucesso');
-                              const updated = blockedUsers.map(user => 
-                                user.id === u.id ? { ...user, penalty_credit: 0 } : user
-                              );
-                              setBlockedUsers(updated);
-                            }
-                          }}
-                        >
-                          Bloquear
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="default"
-                          size="sm"
-                          onClick={async () => {
-                            const { error } = await supabase
-                              .from('profiles')
-                              .update({ penalty_credit: 100 })
-                              .eq('id', u.id);
-                            if (!error) {
-                              toast.success('Utilizador desbloqueado com sucesso');
-                              const updated = blockedUsers.filter(user => user.id !== u.id);
-                              setBlockedUsers(updated);
-                            }
-                          }}
-                        >
-                          Desbloquear
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="text-red-500 border-red-500 hover:bg-red-500 hover:text-white"
-                        onClick={async () => {
-                          if (!confirm(`Tem certeza que deseja banir permanentemente ${u.full_name || u.email}? Esta ação não pode ser desfeita.`)) return;
-                          
-                          // Delete all related records first
-                          await supabase.from('task_submissions').delete().eq('user_id', u.id);
-                          await supabase.from('watch_sessions').delete().eq('user_id', u.id);
-                          await supabase.from('withdrawals').delete().eq('user_id', u.id);
-                          await supabase.from('support_messages').delete().eq('user_id', u.id);
-                          // Delete the user profile
-                          await supabase.from('profiles').delete().eq('id', u.id);
-                          // Delete auth user
-                          await supabase.auth.admin.deleteUser(u.id);
-                          
-                          toast.success('Utilizador banido permanentemente');
-                          const updated = blockedUsers.filter(user => user.id !== u.id);
-                          setBlockedUsers(updated);
-                        }}
-                      >
-                        Banir Permanentemente
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {blockedUsers.length === 0 && <p className="text-muted-foreground">Nenhum utilizador bloqueado</p>}
             </div>
           </div>
         )}
@@ -1994,9 +1712,12 @@ const AdminDashboard = () => {
                     </div>
                     <div className="flex items-center gap-2 mt-2">
                       <span className="text-xs font-bold whitespace-nowrap text-yellow-500">Créditos Penalidade:</span>
-                      <span className="bg-secondary/30 h-8 px-3 flex items-center font-bold text-yellow-500 rounded-md">
-                        {selectedUser.penalty_credit ?? 100}
-                      </span>
+                      <Input
+                        type="number"
+                        value={selectedUser.penalty_credit || 100}
+                        onChange={e => setSelectedUser({ ...selectedUser, penalty_credit: parseInt(e.target.value) || 0 })}
+                        className="bg-secondary/30 h-8 font-bold text-yellow-500 w-20"
+                      />
                     </div>
                   </div>
                 </div>
@@ -2176,7 +1897,7 @@ const AdminDashboard = () => {
                             const displayDetails = displayStatus === 'INCONCLUSIVO' && (result?.details as any)?.error_message
                               ? (result.details as any).error_message
                               : `Like: ${result?.like_detected ? '✅' : '❌'} | Sub: ${result?.subscribe_detected ? '✅' : '❌'} | Confiança: ${Math.round((result?.confidence || 0) * 100)}%`;
-
+                            
                             return (
                               <div className={`text-xs p-2 rounded-lg mb-1 ${displayColor}`}>
                                 <p className="font-bold">{displayLabel}</p>
@@ -2663,11 +2384,11 @@ const AdminDashboard = () => {
         )}
       </div>
 
-      {/* File Preview Modal - Fullscreen */}
+      {/* File Preview Modal */}
       {previewFile && (
-        <div className="fixed inset-0 z-[99999] bg-black flex items-center justify-center">
-          <div className="w-screen h-screen flex flex-col">
-            <div className="p-3 sm:p-4 border-b border-border flex items-center justify-between bg-background/90 backdrop-blur shrink-0">
+        <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center p-4">
+          <div className="w-full h-full max-w-[95vw] max-h-[95vh] flex flex-col">
+            <div className="p-3 sm:p-4 border-b border-border flex items-center justify-between bg-background/80 backdrop-blur rounded-t-lg shrink-0">
               <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
                 <h3 className="font-bold text-foreground truncate text-sm sm:text-base">{previewFile.title}</h3>
               </div>
@@ -2675,25 +2396,25 @@ const AdminDashboard = () => {
                 <ArrowLeft size={16} /> <span className="hidden sm:inline">Voltar</span>
               </Button>
             </div>
-            <div className="flex-1 flex items-center justify-center p-2 sm:p-4 overflow-auto bg-black">
+            <div className="flex-1 bg-black/30 flex items-center justify-center p-2 sm:p-4 overflow-auto">
               {previewFile.data.startsWith('data:image/') || previewFile.data.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i) ? (
                 <img
                   src={previewFile.data}
                   alt="Preview"
-                  className="max-w-full max-h-full object-contain"
+                  className="max-w-[90vw] max-h-[85vh] object-contain shadow-2xl rounded-lg"
                 />
               ) : previewFile.data.startsWith('data:video/') || previewFile.data.includes('youtube.com/embed') || previewFile.data.includes('player.vimeo') || previewFile.data.match(/\.(mp4|webm|ogg)$/i) ? (
-                <video
-                  src={previewFile.data}
-                  controls
-                  className="max-w-full max-h-full"
+                <video 
+                  src={previewFile.data} 
+                  controls 
+                  className="max-w-[90vw] max-h-[85vh] rounded-lg"
                   autoPlay={false}
                 />
               ) : (
-                <iframe
-                  src={previewFile.data}
-                  title="Document Preview"
-                  className="w-full h-full min-h-[500px]"
+                <iframe 
+                  src={previewFile.data} 
+                  title="Document Preview" 
+                  className="w-full h-full min-h-[500px] rounded-lg bg-white" 
                 />
               )}
             </div>
