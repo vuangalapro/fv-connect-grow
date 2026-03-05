@@ -2007,10 +2007,11 @@ const AdminDashboard = () => {
                       </div>
                     </div>
                   </div>
-                ))}
+                </div>
+              ))}
               {submissions.length === 0 && !isLoading && <p className="text-muted-foreground">Nenhuma tarefa pendente</p>}
             </div>
-            )}
+          )}
 
             {/* ADS */}
             {panel === 'ads' && (
