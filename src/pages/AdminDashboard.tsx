@@ -2387,25 +2387,35 @@ const AdminDashboard = () => {
       {/* File Preview Modal */}
       {previewFile && (
         <div className="fixed inset-0 z-[99999] bg-black/90 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-4xl mx-auto my-4 glass rounded-2xl overflow-hidden animate-in zoom-in-95 max-h-[95vh] flex flex-col">
-            <div className="p-4 border-b border-border flex items-center justify-between bg-background/50 shrink-0">
-              <div className="flex items-center gap-4">
-                <h3 className="font-bold text-foreground truncate max-w-[70%]">{previewFile.title}</h3>
+          <div className="w-full max-w-6xl mx-2 sm:mx-4 glass rounded-2xl overflow-hidden animate-in zoom-in-95 max-h-[90vh] sm:max-h-[95vh] flex flex-col">
+            <div className="p-3 sm:p-4 border-b border-border flex items-center justify-between bg-background/50 shrink-0">
+              <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+                <h3 className="font-bold text-foreground truncate text-sm sm:text-base">{previewFile.title}</h3>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setPreviewFile(null)} className="gap-2">
-                <ArrowLeft size={16} /> Voltar
+              <Button variant="outline" size="sm" onClick={() => setPreviewFile(null)} className="gap-2 shrink-0 ml-2">
+                <ArrowLeft size={16} /> <span className="hidden sm:inline">Voltar</span>
               </Button>
             </div>
-            <div className="flex-1 bg-black/20 flex items-center justify-center p-4 overflow-auto">
-              {previewFile.data.startsWith('data:image/') ? (
+            <div className="flex-1 bg-black/20 flex items-center justify-center p-2 sm:p-4 overflow-auto min-h-[200px] max-h-[calc(90vh-80px)] sm:max-h-[calc(95vh-80px)]">
+              {previewFile.data.startsWith('data:image/') || previewFile.data.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i) ? (
                 <img
                   src={previewFile.data}
                   alt="Preview"
-                  className="max-w-full h-auto max-h-none object-contain shadow-2xl rounded"
-                  style={{ maxHeight: 'none', width: 'auto', maxWidth: '100%' }}
+                  className="max-w-full max-h-full object-contain shadow-2xl rounded-lg"
+                />
+              ) : previewFile.data.startsWith('data:video/') || previewFile.data.includes('youtube.com/embed') || previewFile.data.includes('player.vimeo') || previewFile.data.match(/\.(mp4|webm|ogg)$/i) ? (
+                <video 
+                  src={previewFile.data} 
+                  controls 
+                  className="max-w-full max-h-full rounded-lg"
+                  autoPlay={false}
                 />
               ) : (
-                <iframe src={previewFile.data} title="Document Preview" className="w-full h-full rounded-lg bg-white" />
+                <iframe 
+                  src={previewFile.data} 
+                  title="Document Preview" 
+                  className="w-full h-full min-h-[300px] max-h-[70vh] rounded-lg bg-white" 
+                />
               )}
             </div>
           </div>
