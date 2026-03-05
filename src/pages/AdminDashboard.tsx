@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useNavigate } from 'react-router-dom';
-import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle, Loader2, RefreshCw, Youtube } from 'lucide-react';
+import { LogOut, Users, CheckSquare, Megaphone, PlusCircle, ArrowLeft, Trash2, Check, X, Download, Search, Banknote, Eye, Home, MessageSquare, FileText, Menu, AlertTriangle, Loader2, RefreshCw, Youtube, Ban } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -115,6 +115,8 @@ const AdminDashboard = () => {
   const [users, setUsers] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [adSearchQuery, setAdSearchQuery] = useState('');
+  const [showBlockedPanel, setShowBlockedPanel] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [submissions, setSubmissions] = useState<any[]>([]);
   const [processingOCR, setProcessingOCR] = useState<Record<string, boolean>>({});
   const [mobileMenu, setMobileMenu] = useState(false);
@@ -1555,14 +1557,35 @@ const AdminDashboard = () => {
               </Button>
             </div>
             <h2 className="text-2xl font-bold mb-4 font-display">Utilizadores Registados ({users.length})</h2>
-            <div className="relative mb-4 max-w-md">
-              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Pesquisar por nome, email ou telefone..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                className="bg-secondary/50 pl-10"
-              />
+            <div className="flex items-center gap-4 mb-4">
+              <div className="relative flex-1 max-w-md">
+                <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  placeholder="Pesquisar por nome, email ou telefone..."
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  className="bg-secondary/50 pl-10"
+                />
+              </div>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  // Fetch users with penalty_credit < 10
+                  const { data: allProfiles } = await supabase
+                    .from('profiles')
+                    .select('*')
+                    .order('penalty_credit', { ascending: true });
+                  
+                  const blocked = (allProfiles || []).filter(p => (p.penalty_credit || 100) < 10);
+                  setBlockedUsers(blocked);
+                  setShowBlockedPanel(true);
+                }}
+                className="gap-2"
+              >
+                <Ban size={16} />
+                Lista de Bloqueios ({users.filter(u => (u.penalty_credit || 100) < 10).length})
+              </Button>
             </div>
             <div className="space-y-2">
               {filteredUsers.map(u => (
@@ -1611,6 +1634,43 @@ const AdminDashboard = () => {
                 </button>
               ))}
               {filteredUsers.length === 0 && !isLoading && <p className="text-muted-foreground">Nenhum utilizador encontrado</p>}
+            </div>
+          </div>
+        )}
+
+        {/* BLOCKED USERS PANEL */}
+        {showBlockedPanel && (
+          <div>
+            <div className="flex items-center justify-between mb-4">
+              <button onClick={() => setShowBlockedPanel(false)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                <ArrowLeft size={16} /> Voltar
+              </button>
+            </div>
+            <h2 className="text-2xl font-bold mb-4 font-display">Lista de Bloqueios ({blockedUsers.length})</h2>
+            <div className="space-y-2">
+              {blockedUsers.map(u => (
+                <div key={u.id} className="glass rounded-lg p-4 flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{u.full_name || 'Sem nome'}</p>
+                    <p className="text-sm text-muted-foreground">{u.email}</p>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">Crédito de Penalidades</p>
+                      <div className="flex items-center gap-2">
+                        <div className="w-24 h-2 bg-red-500/20 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-red-500 rounded-full" 
+                            style={{ width: `${Math.max(0, u.penalty_credit || 0)}%` }}
+                          />
+                        </div>
+                        <span className="text-sm font-bold text-red-500">{u.penalty_credit || 0}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {blockedUsers.length === 0 && <p className="text-muted-foreground">Nenhum utilizador bloqueado</p>}
             </div>
           </div>
         )}
