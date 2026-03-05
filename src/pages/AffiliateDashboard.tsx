@@ -6,6 +6,7 @@ import { LogOut, Home, CheckSquare, User, Wallet, Headphones, ChevronLeft, Chevr
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { supabase } from '@/lib/supabase';
 import { useVideoTask } from '@/contexts/VideoTaskContext';
@@ -382,6 +383,9 @@ const AffiliateDashboard = () => {
                 .eq('id', existingSubmission.id);
 
               if (error) throw error;
+              // Instantly update state
+              setRejectedTasks(prev => prev.filter(id => id !== taskId));
+              setPendingTasks(prev => [...prev, taskId]);
               toast.success('Tarefa reenviada! Aguardando validação.');
               fetchData();
             }
@@ -583,7 +587,16 @@ const AffiliateDashboard = () => {
                 }`}
             >
               <item.icon size={18} />
-              {item.label}
+              <span className="flex-1">{item.label}</span>
+              {item.id === 'tasks' && tasks.length > 0 && (
+                <span className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{tasks.length}</span>
+              )}
+              {item.id === 'wallet' && (
+                <span className="text-xs text-green-400 font-bold">{balance.toFixed(0)}</span>
+              )}
+              {item.id === 'withdrawals' && withdrawals.length > 0 && (
+                <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{withdrawals.length}</span>
+              )}
               {item.id === 'support' && unreadRepliesCount > 0 && (
                 <span className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{unreadRepliesCount}</span>
               )}
@@ -633,6 +646,15 @@ const AffiliateDashboard = () => {
           >
             <item.icon size={20} />
             {item.label}
+            {item.id === 'tasks' && tasks.length > 0 && (
+              <span className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-auto">{tasks.length}</span>
+            )}
+            {item.id === 'wallet' && (
+              <span className="text-xs text-green-400 font-bold ml-auto">{balance.toFixed(0)}</span>
+            )}
+            {item.id === 'withdrawals' && withdrawals.length > 0 && (
+              <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-auto">{withdrawals.length}</span>
+            )}
             {item.id === 'support' && unreadRepliesCount > 0 && (
               <span className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold ml-auto">{unreadRepliesCount}</span>
             )}
@@ -800,6 +822,9 @@ const AffiliateDashboard = () => {
                                   .eq('id', existingSubmission.id);
 
                                 if (error) throw error;
+                                // Instantly update state
+                                setRejectedTasks(prev => prev.filter(id => id !== task.id));
+                                setPendingTasks(prev => [...prev, task.id]);
                                 toast.success('Tarefa reenviada! Aguardando validação.');
                                 fetchData();
                                 return;
@@ -823,6 +848,9 @@ const AffiliateDashboard = () => {
                             const { error } = await supabase.from('task_submissions').insert(submissionData);
 
                             if (error) throw error;
+
+                            // Instantly add to pending tasks so it disappears from available tasks
+                            setPendingTasks(prev => [...prev, task.id]);
 
                             toast.success('Tarefa concluída! Aguardando validação do administrador.');
                             fetchData();
@@ -1254,14 +1282,14 @@ const AffiliateDashboard = () => {
 
         {/* SUPPORT */}
         {panel === 'support' && (
-          <div className="w-full max-w-4xl mx-auto">
+          <div className="w-full max-w-4xl mx-auto px-0 md:px-4">
             <button onClick={() => setPanel('home')} className="flex items-center gap-2 text-muted-foreground hover:text-primary mb-4 text-sm">
               <ArrowLeft size={16} /> Voltar
             </button>
             <h2 className="text-2xl font-bold mb-2 font-display">Suporte Técnico</h2>
             <p className="text-muted-foreground mb-6">Entre em contacto com a equipe do suporte técnico</p>
 
-            <div className="grid md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 gap-6 w-full">
               {/* Form to send new message */}
               <div className="glass rounded-2xl p-6">
                 <h3 className="font-bold mb-4">Nova Mensagem</h3>
@@ -1315,32 +1343,29 @@ const AffiliateDashboard = () => {
               </div>
             </div>
 
-            {/* Selected message detail */}
-            {selectedMessage && (
-              <div className="mt-6 glass rounded-2xl p-6 w-full">
+            {/* Selected message detail - Dialog Popup */}
+            <Dialog open={!!selectedMessage} onOpenChange={() => setSelectedMessage(null)}>
+              <DialogContent className="sm:max-w-md md:max-w-lg w-[95vw] max-h-[80vh] overflow-y-auto">
                 <div className="flex justify-between items-start mb-4">
                   <div>
-                    <h3 className="font-bold">{selectedMessage.subject}</h3>
-                    <p className="text-sm text-muted-foreground">{selectedMessage.email}</p>
+                    <h3 className="font-bold">{selectedMessage?.subject}</h3>
+                    <p className="text-sm text-muted-foreground">{selectedMessage?.email}</p>
                     <p className="text-xs text-muted-foreground">
-                      Enviada em: {new Date(selectedMessage.created_at).toLocaleString()}
+                      Enviada em: {selectedMessage && new Date(selectedMessage.created_at).toLocaleString()}
                     </p>
                   </div>
-                  <Button variant="ghost" size="sm" onClick={() => setSelectedMessage(null)}>
-                    <X size={16} />
-                  </Button>
                 </div>
 
                 <div className="bg-secondary/30 p-4 rounded-lg mb-4 break-all">
-                  <p className="text-sm whitespace-pre-wrap">{selectedMessage.message}</p>
+                  <p className="text-sm whitespace-pre-wrap">{selectedMessage?.message}</p>
                 </div>
 
-                {selectedMessage.reply ? (
+                {selectedMessage?.reply ? (
                   <div className="bg-green-500/10 border border-green-500/20 p-4 rounded-lg">
                     <p className="text-sm font-bold text-green-400 mb-2">Resposta do Suporte:</p>
-                    <p className="text-sm whitespace-pre-wrap">{selectedMessage.reply}</p>
+                    <p className="text-sm whitespace-pre-wrap">{selectedMessage?.reply}</p>
                     <p className="text-xs text-muted-foreground mt-2">
-                      {selectedMessage.replied_at && new Date(selectedMessage.replied_at).toLocaleString()}
+                      {selectedMessage?.replied_at && new Date(selectedMessage.replied_at).toLocaleString()}
                     </p>
                   </div>
                 ) : (
@@ -1349,12 +1374,12 @@ const AffiliateDashboard = () => {
                   </div>
                 )}
 
-                <div className="flex gap-2 mt-4">
+                <div className="flex gap-2 mt-4 justify-end">
                   <Button
                     variant="destructive"
                     size="sm"
                     onClick={async () => {
-                      if (confirm('Tem certeza que deseja eliminar esta mensagem?')) {
+                      if (selectedMessage && confirm('Tem certeza que deseja eliminar esta mensagem?')) {
                         await supabase.from('support_messages').delete().eq('id', selectedMessage.id);
                         setMyMessages(prev => prev.filter(m => m.id !== selectedMessage.id));
                         setSelectedMessage(null);
@@ -1365,8 +1390,8 @@ const AffiliateDashboard = () => {
                     <Trash2 size={14} className="mr-1" /> Eliminar
                   </Button>
                 </div>
-              </div>
-            )}
+              </DialogContent>
+            </Dialog>
           </div>
         )}
       </div>

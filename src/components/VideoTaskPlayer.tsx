@@ -249,8 +249,8 @@ export default function VideoTaskPlayer({
   const [isMobile, setIsMobile] = useState(false);
 
   // Video task context for single popup lock
-  const { activeVideoTaskId, openVideoTask, closeVideoTask, isAnyVideoTaskOpen, triggerSwitchToReviews } = useVideoTask();
-  const isThisTaskOpen = activeVideoTaskId === taskId;
+  const { activeTask, isPopupOpen, openVideoTask, closeVideoTask, isAnyVideoTaskOpen, triggerSwitchToReviews, timeRemaining, isTimerActive, resetTimer } = useVideoTask();
+  const isThisTaskOpen = activeTask?.id === taskId;
   const isOtherTaskOpen = isAnyVideoTaskOpen && !isThisTaskOpen;
 
   const [deviceFingerprint, setDeviceFingerprint] = useState<string>('');
@@ -309,18 +309,20 @@ export default function VideoTaskPlayer({
     }
   }, [isVideoCompletedInSession]);
 
-  // Effect to set canSubmit only when BOTH video is completed AND YouTube was opened
+  // Effect to set canSubmit only when BOTH video is completed AND YouTube was opened AND timer is done
   useEffect(() => {
-    if (isVideoCompleted && hasOpenedYouTube) {
+    if (isVideoCompleted && hasOpenedYouTube && timeRemaining === 0) {
       setCanSubmit(true);
+    } else {
+      setCanSubmit(false);
     }
-  }, [isVideoCompleted, hasOpenedYouTube]);
+  }, [isVideoCompleted, hasOpenedYouTube, timeRemaining]);
 
   useEffect(() => {
     if (isOpen && taskId && userId) {
       // Reset toast shown flag when opening video task
       toastShownRef.current = false;
-      
+
       // Check if there's a saved time for this task
       const savedTime = localStorage.getItem(getWatchTimeKey(userId, taskId));
 
@@ -344,6 +346,16 @@ export default function VideoTaskPlayer({
       setStartTime(new Date());
     }
   }, [isOpen, taskId, userId]);
+
+  // Sync with context's popup state - recover popup when user returns to page
+  useEffect(() => {
+    if (isPopupOpen && isThisTaskOpen && !isOpen) {
+      // Restore popup state from context
+      setIsOpen(true);
+      // Reset timer when recovering
+      resetTimer();
+    }
+  }, [isPopupOpen, isThisTaskOpen, isOpen, resetTimer]);
 
   // Track watch sessions for anti-fraud
   const watchSessionRef = useRef<{ start: number, end: number | null }[]>([]);
@@ -530,10 +542,14 @@ export default function VideoTaskPlayer({
             toast.error('Você só pode executar uma tarefa por vez. Feche o vídeo atual para continuar.');
             return;
           }
-          if (!openVideoTask(taskId)) {
-            toast.error('Você só pode executar uma tarefa por vez. Feche o vídeo atual para continuar.');
-            return;
-          }
+          // Open task with full data for localStorage persistence
+          openVideoTask({
+            id: taskId,
+            title: 'Tarefa Vídeo',
+            videoUrl: videoUrl,
+            requiredTime: requiredTime,
+            reward: 0
+          });
           setIsOpen(true);
         }}
         disabled={isOtherTaskOpen}
@@ -589,6 +605,24 @@ export default function VideoTaskPlayer({
             {/* Instructions - Show after video is completed */}
             {isVideoCompleted && (
               <div className="mt-4 space-y-4">
+                {/* Timer countdown */}
+                {timeRemaining > 0 && (
+                  <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl flex items-center justify-center gap-2">
+                    <Loader2 size={16} className="animate-spin text-blue-400" />
+                    <span className="text-sm text-blue-300">
+                      Aguarde <strong>{timeRemaining}s</strong> antes de enviar
+                    </span>
+                  </div>
+                )}
+                {timeRemaining === 0 && (
+                  <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl flex items-center justify-center gap-2">
+                    <Check size={16} className="text-green-400" />
+                    <span className="text-sm text-green-300">
+                      Pronto! Pode enviar a prova
+                    </span>
+                  </div>
+                )}
+
                 {/* Instructions */}
                 <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl">
                   <p className="text-sm text-blue-300 font-bold mb-3 flex items-center gap-2">

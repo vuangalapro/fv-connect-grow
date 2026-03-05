@@ -117,6 +117,7 @@ const AdminDashboard = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [adSearchQuery, setAdSearchQuery] = useState('');
   const [showBlockedPanel, setShowBlockedPanel] = useState(false);
+  const [unreadAdsCount, setUnreadAdsCount] = useState(0);
   const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
   const [blockedSearchQuery, setBlockedSearchQuery] = useState('');
   const [submissions, setSubmissions] = useState<any[]>([]);
@@ -277,6 +278,9 @@ const AdminDashboard = () => {
             console.error('Error fetching ads:', error);
           }
           setAds(data || []);
+          // Calculate unread ads count
+          const unread = (data || []).filter((ad: any) => ad.is_read !== true).length;
+          setUnreadAdsCount(unread);
         } catch (err) {
           console.error('Exception fetching ads:', err);
           setAds([]);
@@ -351,55 +355,63 @@ const AdminDashboard = () => {
         .select('id, user_id, ip_address, device_fingerprint, created_at, task_id, fraud_alert, watched_time, screenshot_url');
 
       if (allSubmissions && sub.ip_address) {
-        // Check if this IP was used by other users
+        // Check if this IP was used by other users FOR THE SAME TASK in the last hour
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
         const ipMatches = allSubmissions.filter(
-          s => s.ip_address === sub.ip_address && s.user_id !== sub.user_id
+          s => s.ip_address === sub.ip_address &&
+            s.user_id !== sub.user_id &&
+            s.task_id === sub.task_id &&
+            new Date(s.created_at) > new Date(oneHourAgo)
         );
 
         if (ipMatches.length > 0) {
           riskScore += 30;
-          details.push(`⚠️ IP duplicado: ${ipMatches.length} outra(s) submissão(ões) com mesmo IP`);
+          details.push(`⚠️ IP duplicado na mesma tarefa: ${ipMatches.length} outra(s) submissão(ões)`);
           checkedIPs.push(sub.ip_address);
         }
       }
 
-      // 2. Check device fingerprint duplication
+      // 2. Check device fingerprint duplication (same task, last hour)
       if (allSubmissions && sub.device_fingerprint) {
+        const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
         const fpMatches = allSubmissions.filter(
-          s => s.device_fingerprint === sub.device_fingerprint && s.user_id !== sub.user_id
+          s => s.device_fingerprint === sub.device_fingerprint &&
+            s.user_id !== sub.user_id &&
+            s.task_id === sub.task_id &&
+            new Date(s.created_at) > new Date(oneHourAgo)
         );
 
         if (fpMatches.length > 0) {
           riskScore += 50;
-          details.push(`⚠️ Impressão de dispositivo duplicada: ${fpMatches.length} outra(s) submissão(ões)`);
+          details.push(`⚠️ Dispositivo duplicado na mesma tarefa: ${fpMatches.length} outra(s) submissão(ões)`);
           checkedFingerprints.push(sub.device_fingerprint);
         }
       }
 
-      // 3. Check user history - how many submissions has this user made?
+      // 3. Check user history - how many submissions has this user made? (only if excessive)
       const userSubmissions = allSubmissions?.filter(s => s.user_id === sub.user_id) || [];
-      if (userSubmissions.length > 10) {
+      if (userSubmissions.length > 20) {
         riskScore += 10;
         details.push(`ℹ️ Utilizador com ${userSubmissions.length} submissões no total`);
       }
 
-      // 4. Check for rapid submissions (same user, multiple tasks in short time)
+      // 4. Check for rapid submissions (same user, multiple tasks in VERY short time - 15 min)
       const recentSubmissions = userSubmissions.filter(s => {
         const subTime = new Date(s.created_at).getTime();
         const currentTime = new Date(sub.created_at).getTime();
-        const hoursDiff = (currentTime - subTime) / (1000 * 60 * 60);
-        return hoursDiff >= 0 && hoursDiff <= 1 && s.id !== sub.id;
+        const minutesDiff = (currentTime - subTime) / (1000 * 60);
+        return minutesDiff >= 0 && minutesDiff <= 15 && s.id !== sub.id;
       });
 
-      if (recentSubmissions.length >= 3) {
+      if (recentSubmissions.length >= 5) {
         riskScore += 20;
-        details.push(`⚠️ Múltiplas submissões em pouco tempo: ${recentSubmissions.length} nos últimos 60 minutos`);
+        details.push(`⚠️ Múltiplas submissões em pouco tempo: ${recentSubmissions.length} nos últimos 15 minutos`);
       }
 
       // 5. Check watch time - was the video watched long enough?
-      if (sub.watched_time && sub.watched_time < 60) {
+      if (sub.watched_time && sub.watched_time < 30) {
         riskScore += 25;
-        details.push(`⚠️ Tempo de visualização baixo: ${Math.floor(sub.watched_time)}s (mín: 60s)`);
+        details.push(`⚠️ Tempo de visualização baixo: ${Math.floor(sub.watched_time)}s (mín: 30s)`);
       }
 
       // 6. Check if screenshot was uploaded
@@ -408,22 +420,35 @@ const AdminDashboard = () => {
         details.push(`⚠️ Sem captura de ecrã carregada`);
       }
 
-      // 7. Check for existing fraud alerts on user's submissions
-      const userFraudAlerts = allSubmissions?.filter(
-        s => s.user_id === sub.user_id && s.fraud_alert === 'suspeita'
+      // 7. Check for RECENT fraud alerts on user's submissions (last 24 hours only)
+      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const recentFraudAlerts = allSubmissions?.filter(
+        s => s.user_id === sub.user_id &&
+          (s.fraud_alert === 'suspeita' || s.fraud_alert === 'fraude') &&
+          new Date(s.created_at) > new Date(oneDayAgo)
       ) || [];
 
-      if (userFraudAlerts.length > 0) {
-        riskScore += 30;
-        details.push(`⚠️ Utilizador com ${userFraudAlerts.length} alerta(s) de fraude anterior(es)`);
+      if (recentFraudAlerts.length > 0) {
+        riskScore += 20;
+        details.push(`⚠️ Utilizador com ${recentFraudAlerts.length} alerta(s) de fraude recente(s)`);
       }
 
-      // Determine result based on risk score
+      // 8. Check visual analysis result - if like AND subscribe detected, significantly reduce risk
+      const visualResult = visualAnalysisResults[sub.id];
+      if (visualResult && visualResult.like_detected && visualResult.subscribe_detected) {
+        riskScore = Math.max(0, riskScore - 40); // Reduce risk score by 40 if both like and sub detected
+        details.push(`✅ Verificação visual: Like ✅ + Subscribe ✅ detectado`);
+      } else if (visualResult && (visualResult.like_detected || visualResult.subscribe_detected)) {
+        riskScore = Math.max(0, riskScore - 20); // Reduce by 20 if at least one detected
+        details.push(`✅ Verificação visual: ${visualResult.like_detected ? 'Like' : 'Subscribe'} detectado`);
+      }
+
+      // Determine result based on risk score (more lenient thresholds)
       let result: 'confiavel' | 'suspeito' | 'fraude';
-      if (riskScore >= 70) {
+      if (riskScore >= 100) {
         result = 'fraude';
         details.unshift(`🚨 RISCO ALTO: ${riskScore} pontos`);
-      } else if (riskScore >= 30) {
+      } else if (riskScore >= 50) {
         result = 'suspeito';
         details.unshift(`⚠️ RISCO MÉDIO: ${riskScore} pontos`);
       } else {
@@ -451,7 +476,7 @@ const AdminDashboard = () => {
         .update({ fraud_alert: result })
         .eq('id', sub.id);
 
-      toast.info(`Análise concluída: ${result === 'confiavel' ? '✅ Confiável' : result === 'suspeito' ? '✅ Confiável' : '🚨 Fraude'}`);
+      toast.info(`Análise concluída: ${result === 'confiavel' ? '✅ Confiável' : result === 'suspeito' ? '⚠️ Suspeito' : '🚨 Fraude'}`);
     } catch (error) {
       console.error('Error analyzing task:', error);
       toast.error('Erro ao analisar tarefa');
@@ -713,6 +738,30 @@ const AdminDashboard = () => {
       toast.success('Publicidade apagada');
     } catch (error) {
       toast.error('Erro ao apagar');
+    }
+  };
+
+  const deleteAllAds = async () => {
+    if (!confirm('Tens a certeza que queres apagar TODAS as publicidades?')) return;
+    try {
+      const { error } = await supabase.from('ads').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      if (error) throw error;
+      setAds([]);
+      setUnreadAdsCount(0);
+      toast.success('Todas as publicidades foram apagadas');
+    } catch (error) {
+      toast.error('Erro ao apagar todas');
+    }
+  };
+
+  const markAdAsRead = async (id: string) => {
+    try {
+      const { error } = await supabase.from('ads').update({ is_read: true }).eq('id', id);
+      if (error) throw error;
+      setAds(prev => prev.map(a => a.id === id ? { ...a, is_read: true } : a));
+      setUnreadAdsCount(prev => Math.max(0, prev - 1));
+    } catch (error) {
+      console.error('Error marking ad as read:', error);
     }
   };
 
@@ -1104,8 +1153,8 @@ const AdminDashboard = () => {
               {item.id === 'messages' && unreadMessagesCount > 0 && (
                 <span className="bg-yellow-500 text-black text-xs px-1.5 py-0.5 rounded-full font-bold">{unreadMessagesCount}</span>
               )}
-              {item.id === 'ads' && ads.length > 0 && (
-                <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{ads.length}</span>
+              {item.id === 'ads' && unreadAdsCount > 0 && (
+                <span className="bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{unreadAdsCount}</span>
               )}
               {item.id === 'tasks' && submissions.filter(s => s.status === 'pending').length > 0 && (
                 <span className="bg-green-500 text-white text-xs px-1.5 py-0.5 rounded-full font-bold">{submissions.filter(s => s.status === 'pending').length}</span>
@@ -1615,7 +1664,6 @@ const AdminDashboard = () => {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold text-primary">Saldo: {parseFloat(u.balance || 0).toFixed(2)} Kz</p>
-                      <p className={`text-sm font-bold ${(u.penalty_credit || 100) <= 20 ? 'text-red-500' : (u.penalty_credit || 100) <= 50 ? 'text-yellow-500' : 'text-green-500'}`}>Penalidade: {u.penalty_credit ?? 100}</p>
                     </div>
                   </div>
 
@@ -1881,92 +1929,55 @@ const AdminDashboard = () => {
             </div>
             <h2 className="text-2xl font-bold mb-6 font-display">Validar Tarefas ({submissions.filter(s => s.status === 'pending').length} pendentes)</h2>
             <div className="space-y-4">
-              {submissions.filter(sub => sub.status === 'pending' && !processedTaskIds.current.includes(sub.id)).map(sub => (
-                <div key={sub.id} className="glass rounded-2xl p-4">
-                  <div className="flex items-start gap-4">
-                    {sub.screenshot_url && (
-                      <div className="shrink-0">
-                        <img
-                          src={sub.screenshot_url}
-                          alt="Captura"
-                          className="w-32 h-24 object-cover rounded-lg border border-border cursor-pointer hover:opacity-80 transition-opacity"
-                          onClick={() => setPreviewFile({
-                            data: sub.screenshot_url,
-                            title: `Captura de ${sub.profiles?.full_name || sub.profiles?.email}`,
-                            extractedCode: sub.ocr_extracted_code || sub.unique_comment_code,
-                            fraudAlert: sub.fraud_alert
-                          })}
-                        />
-                        <button
-                          onClick={() => window.open(sub.screenshot_url, '_blank')}
-                          className="text-xs text-primary hover:underline mt-1 flex items-center gap-1"
-                        >
-                          <Eye size={12} /> Abrir imagem
-                        </button>
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      <p className="font-medium text-foreground">{sub.profiles?.full_name || sub.profiles?.email}</p>
-                      <p className="text-sm text-muted-foreground">Email: {sub.profiles?.email}</p>
-                      <p className="text-sm text-muted-foreground">ID Tarefa: {sub.task_id}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(sub.created_at).toLocaleString()}</p>
-
-                      {/* Simple info - only show watch time */}
-                      {sub.watched_time && (
-                        <p className="text-xs text-muted-foreground mt-1">
-                          ⏱ Tempo assistido: {Math.floor(sub.watched_time / 60)}:{(sub.watched_time % 60).toString().padStart(2, '0')}
-                        </p>
-                      )}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      {/* Analysis result display */}
-                      {analysisResults[sub.id] && (
-                        <div className={`text-xs p-2 rounded-lg mb-1 ${analysisResults[sub.id].result === 'confiavel' ? 'bg-green-500/20 text-green-400 border border-green-500/30' :
-                          analysisResults[sub.id].result === 'suspeito' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30' :
-                            'bg-red-500/20 text-red-400 border border-red-500/30'
-                          }`}>
-                          <p className="font-bold">
-                            {analysisResults[sub.id].result === 'confiavel' ? '✅ Confiável' :
-                              analysisResults[sub.id].result === 'suspeito' ? '✅ Confiável' : '🚨 Fraude'}
-                          </p>
-                          <p className="text-[10px] mt-1 opacity-80">
-                            {analysisResults[sub.id].details[0]}
-                          </p>
+              {submissions.filter(sub => sub.status === 'pending' && !processedTaskIds.current.includes(sub.id)).map(sub => {
+                // Determine border color based on fraud analysis
+                let borderClass = '';
+                if (analysisResults[sub.id]) {
+                  if (analysisResults[sub.id].result === 'confiavel') {
+                    borderClass = 'border-2 border-green-500/50';
+                  } else if (analysisResults[sub.id].result === 'suspeito') {
+                    borderClass = 'border-2 border-yellow-500/50';
+                  } else {
+                    borderClass = 'border-2 border-red-500/50';
+                  }
+                }
+                return (
+                  <div key={sub.id} className={`glass rounded-2xl p-4 ${borderClass}`}>
+                    <div className="flex items-start gap-4">
+                      {sub.screenshot_url && (
+                        <div className="shrink-0">
+                          <img
+                            src={sub.screenshot_url}
+                            alt="Captura"
+                            className="w-32 h-24 object-cover rounded-lg border border-border cursor-pointer hover:opacity-80 transition-opacity"
+                            onClick={() => setPreviewFile({
+                              data: sub.screenshot_url,
+                              title: `Captura de ${sub.profiles?.full_name || sub.profiles?.email}`,
+                              extractedCode: sub.ocr_extracted_code || sub.unique_comment_code,
+                              fraudAlert: sub.fraud_alert
+                            })}
+                          />
+                          <button
+                            onClick={() => window.open(sub.screenshot_url, '_blank')}
+                            className="text-xs text-primary hover:underline mt-1 flex items-center gap-1"
+                          >
+                            <Eye size={12} /> Abrir imagem
+                          </button>
                         </div>
                       )}
-                      {/* YouTube Visual Analysis result display */}
-                      {visualAnalysisResults[sub.id] && (
-                        <>
-                          {(() => {
-                            const result = visualAnalysisResults[sub.id];
-                            const statusColors: Record<string, string> = {
-                              'CONFIRMADO': 'bg-green-500/20 text-green-400 border border-green-500/30',
-                              'PROVAVEL': 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/30',
-                              'INCONCLUSIVO': 'bg-gray-500/20 text-gray-400 border border-gray-500/30',
-                              'SUSPEITO': 'bg-red-500/20 text-red-400 border border-red-500/30',
-                            };
-                            const statusLabels: Record<string, string> = {
-                              'CONFIRMADO': '✅ CONFIRMADO',
-                              'PROVAVEL': '⚠️ PROVÁVEL',
-                              'INCONCLUSIVO': '❓ INCONCLUSIVO',
-                              'SUSPEITO': '🚨 SUSPEITO',
-                            };
-                            const displayStatus = result?.status || 'INCONCLUSIVO';
-                            const displayColor = statusColors[displayStatus] || 'bg-gray-500/20 text-gray-400';
-                            const displayLabel = statusLabels[displayStatus] || displayStatus;
-                            const displayDetails = displayStatus === 'INCONCLUSIVO' && (result?.details as any)?.error_message
-                              ? (result.details as any).error_message
-                              : `Like: ${result?.like_detected ? '✅' : '❌'} | Sub: ${result?.subscribe_detected ? '✅' : '❌'} | Confiança: ${Math.round((result?.confidence || 0) * 100)}%`;
+                      <div className="flex-1">
+                        <p className="font-medium text-foreground">{sub.profiles?.full_name || sub.profiles?.email}</p>
+                        <p className="text-sm text-muted-foreground">Email: {sub.profiles?.email}</p>
+                        <p className="text-sm text-muted-foreground">ID Tarefa: {sub.task_id}</p>
+                        <p className="text-xs text-muted-foreground">{new Date(sub.created_at).toLocaleString()}</p>
 
-                            return (
-                              <div className={`text-xs p-2 rounded-lg mb-1 ${displayColor}`}>
-                                <p className="font-bold">{displayLabel}</p>
-                                <p className="text-[10px] mt-1 opacity-80">{displayDetails}</p>
-                              </div>
-                            );
-                          })()}
-                        </>
-                      )}
+                        {/* Simple info - only show watch time */}
+                        {sub.watched_time && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            ⏱ Tempo assistido: {Math.floor(sub.watched_time / 60)}:{(sub.watched_time % 60).toString().padStart(2, '0')}
+                          </p>
+                        )}
+                      </div>
                       <div className="flex gap-2">
                         {/* Analyze button */}
                         <Button
@@ -1981,9 +1992,9 @@ const AdminDashboard = () => {
                           ) : analyzedTasks.has(sub.id) ? (
                             <Check size={16} className="text-green-400" />
                           ) : (
-                            <>
-                              <Search size={16} className="mr-1" /> Analisar
-                            </>
+                            <span className="flex items-center gap-1">
+                              <Search size={16} /> Analisar
+                            </span>
                           )}
                         </Button>
 
@@ -1996,588 +2007,613 @@ const AdminDashboard = () => {
                       </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
               {submissions.length === 0 && !isLoading && <p className="text-muted-foreground">Nenhuma tarefa pendente</p>}
             </div>
-          </div>
-        )}
+            )}
 
-        {/* ADS */}
-        {panel === 'ads' && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
-                <ArrowLeft size={16} /> Voltar
-              </button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  setIsRefreshing(true);
-                  await fetchData();
-                  setIsRefreshing(false);
-                }}
-                disabled={isRefreshing}
-                className="gap-2"
-              >
-                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-                Atualizar
-              </Button>
-            </div>
-            <h2 className="text-2xl font-bold mb-4 font-display">Publicidades Recebidas ({filteredAds.length})</h2>
-            <div className="mb-6">
-              <Input
-                type="text"
-                placeholder="Pesquisar por nome ou email..."
-                value={adSearchQuery}
-                onChange={(e) => setAdSearchQuery(e.target.value)}
-                className="max-w-md"
-              />
-            </div>
-            <div className="space-y-4">
-              {filteredAds.map(ad => (
-                <div key={ad.id} className="glass rounded-2xl p-6">
-                  <div className="grid gap-2 text-sm">
-                    {[
-                      { label: 'Nome', value: ad.name },
-                      { label: 'Empresa', value: ad.company },
-                      { label: 'Email', value: ad.email },
-                      { label: 'Detalhes', value: ad.details },
-                      { label: 'Banco', value: ad.bank },
-                      { label: 'Plano', value: ad.plan || 'N/A' },
-                      { label: 'Data', value: new Date(ad.date).toLocaleString() },
-                    ].map(item => (
-                      <p key={item.label}><span className="text-muted-foreground">{item.label}:</span> <span className="text-foreground">{item.value}</span></p>
-                    ))}
-                  </div>
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {ad.file_data && (
-                      <>
-                        <Button size="sm" variant="outline" className="text-xs" onClick={() => downloadBase64(ad.file_data, 'publicidade.jpg')}>
-                          <Download size={14} className="mr-1" /> Baixar Publicidade
-                        </Button>
-                        <Button size="sm" variant="outline" className="text-xs" onClick={() => setPreviewFile({ data: ad.file_data, title: 'Arquivo de Publicidade' })}>
-                          <Eye size={14} className="mr-1" /> Ver Publicidade
-                        </Button>
-                      </>
-                    )}
-                    {ad.receipt_data && (
-                      <>
-                        <Button size="sm" variant="outline" className="text-xs" onClick={() => downloadBase64(ad.receipt_data, 'comprovativo.jpg')}>
-                          <Download size={14} className="mr-1" /> Baixar Comprovativo
-                        </Button>
-                        <Button size="sm" variant="outline" className="text-xs" onClick={() => setPreviewFile({ data: ad.receipt_data, title: 'Comprovativo de Pagamento' })}>
-                          <Eye size={14} className="mr-1" /> Ver Comprovativo
-                        </Button>
-                      </>
-                    )}
-                    <Button size="sm" variant="destructive" onClick={() => deleteAd(ad.id)} className="text-xs">
-                      <Trash2 size={14} className="mr-1" /> Apagar
-                    </Button>
-                  </div>
-                </div>
-              ))}
-              {filteredAds.length === 0 && !isLoading && (
-                <p className="text-muted-foreground">
-                  {adSearchQuery ? 'Nenhuma publicidade encontrada' : 'Nenhuma publicidade recebida'}
-                </p>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* MESSAGES - Support Messages */}
-        {panel === 'messages' && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
-                <ArrowLeft size={16} /> Voltar
-              </button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  setIsRefreshing(true);
-                  await fetchData();
-                  setIsRefreshing(false);
-                }}
-                disabled={isRefreshing}
-                className="gap-2"
-              >
-                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-                Atualizar
-              </Button>
-            </div>
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold font-display">Mensagens de Suporte ({unreadMessagesCount > 0 ? `${unreadMessagesCount} nova(s)` : 'Todas vistas'})</h2>
-              {supportMessages.length > 0 && (
-                <Button variant="destructive" size="sm" onClick={deleteAllMessages} className="gap-2">
-                  <Trash2 size={16} /> Apagar Todas
-                </Button>
-              )}
-            </div>
-            <div className="space-y-4">
-              {supportMessages.map(msg => (
-                <div key={msg.id} className={`glass rounded-2xl p-6 ${!msg.is_read ? 'border-l-4 border-l-yellow-500' : ''}`}>
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold text-foreground">{msg.name}</p>
-                        {msg.user_id && (
-                          <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">Afiliado</span>
-                        )}
-                        {!msg.user_id && (
-                          <span className="text-xs bg-gray-500/20 text-gray-400 px-2 py-0.5 rounded">Visitante</span>
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground">{msg.email}</p>
-                    </div>
-                    <span className="text-xs text-muted-foreground bg-secondary/50 px-2 py-1 rounded">
-                      {new Date(msg.created_at).toLocaleString()}
-                    </span>
-                    {!msg.is_read && (
-                      <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded">
-                        Nova
+            {/* ADS */}
+            {panel === 'ads' && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                    <ArrowLeft size={16} /> Voltar
+                  </button>
+                  <div className="flex items-center gap-2">
+                    {unreadAdsCount > 0 && (
+                      <span className="bg-blue-500 text-white text-xs px-2 py-1 rounded-full font-bold">
+                        {unreadAdsCount} nova(s)
                       </span>
                     )}
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    <p><span className="text-muted-foreground">Assunto:</span> <span className="text-foreground">{msg.subject}</span></p>
-                    <div className="bg-secondary/30 p-3 rounded-lg mt-2">
-                      <p className="text-foreground whitespace-pre-wrap">{msg.message}</p>
-                    </div>
-
-                    {/* Reply Section */}
-                    {msg.reply && (
-                      <div className="bg-green-500/10 border border-green-500/20 p-3 rounded-lg mt-2">
-                        <p className="text-xs text-green-400 font-bold mb-1">Resposta do Suporte:</p>
-                        <p className="text-foreground whitespace-pre-wrap text-sm">{msg.reply}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          {msg.replied_at && new Date(msg.replied_at).toLocaleString()}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 mt-4">
-                    {msg.user_id ? (
-                      replyingTo === msg.id ? (
-                        <div className="flex-1 space-y-2">
-                          <Textarea
-                            placeholder="Digite a sua resposta..."
-                            value={replyText}
-                            onChange={e => setReplyText(e.target.value)}
-                            className="text-xs"
-                            rows={3}
-                          />
-                          <div className="flex gap-2">
-                            <Button size="sm" onClick={() => replyMessage(msg.id)} className="text-xs bg-green-600 hover:bg-green-700">
-                              Enviar Resposta
-                            </Button>
-                            <Button size="sm" variant="outline" onClick={() => { setReplyingTo(null); setReplyText(''); }} className="text-xs">
-                              Cancelar
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-xs"
-                          onClick={() => { markAsRead(msg.id); setReplyingTo(msg.id); }}
-                        >
-                          <MessageSquare size={14} className="mr-1" /> Responder
-                        </Button>
-                      )
-                    ) : (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-xs opacity-50"
-                        disabled
-                        title="Só pode responder a mensagens de afiliados"
-                      >
-                        <MessageSquare size={14} className="mr-1" /> Responder
-                      </Button>
-                    )}
-                    {!msg.is_read && (
-                      <Button size="sm" variant="secondary" onClick={() => markAsRead(msg.id)} className="text-xs">
-                        <Check size={14} className="mr-1" /> Marcar como lida
-                      </Button>
-                    )}
-                    <Button size="sm" variant="destructive" onClick={() => deleteMessage(msg.id)} className="text-xs">
-                      <Trash2 size={14} className="mr-1" /> Apagar
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={deleteAllAds}
+                      disabled={ads.length === 0}
+                      className="gap-2 text-red-500 hover:text-red-500 hover:bg-red-500/10"
+                    >
+                      <Trash2 size={16} />
+                      Apagar Todas
                     </Button>
-                  </div>
-                </div>
-              ))}
-              {supportMessages.length === 0 && !isLoading && <p className="text-muted-foreground">Nenhuma mensagem de suporte recebida</p>}
-            </div>
-          </div>
-        )}
-
-        {/* BLOCKED USERS */}
-        {panel === 'blocked' && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
-                <ArrowLeft size={16} /> Voltar
-              </button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  setIsRefreshing(true);
-                  await fetchData();
-                  setIsRefreshing(false);
-                }}
-                disabled={isRefreshing}
-                className="gap-2"
-              >
-                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-                Atualizar
-              </Button>
-            </div>
-            <h2 className="text-2xl font-bold mb-2 font-display">Lista de Bloqueios</h2>
-            <p className="text-muted-foreground mb-4">Utilizadores com crédito de penalidade igual ou inferior a 20.</p>
-
-            {/* Search Input */}
-            <div className="mb-6">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={18} />
-                <Input
-                  placeholder="Pesquisar por nome ou email..."
-                  value={blockedSearchQuery}
-                  onChange={(e) => setBlockedSearchQuery(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-            </div>
-
-            {blockedUsers.length === 0 ? (
-              <div className="text-center py-12">
-                <Ban size={48} className="mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">Nenhum utilizador bloqueado</p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {blockedUsers.filter(u =>
-                  !blockedSearchQuery ||
-                  (u.full_name || u.username || '').toLowerCase().includes(blockedSearchQuery.toLowerCase()) ||
-                  (u.email || '').toLowerCase().includes(blockedSearchQuery.toLowerCase())
-                ).map(user => (
-                  <div key={user.id} className="glass rounded-xl p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
-                        <span className="text-red-600 dark:text-red-400 font-bold text-lg">
-                          {(user.full_name || user.username || user.email || 'U').charAt(0).toUpperCase()}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="font-semibold">{user.full_name || user.username || 'Sem nome'}</p>
-                        <p className="text-sm text-muted-foreground">{user.email}</p>
-                        <p className="text-sm text-green-500 font-bold">Saldo: {parseFloat(user.balance || 0).toFixed(2)} Kz</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="w-48">
-                        <div className="flex justify-between text-sm mb-1">
-                          <span className="text-muted-foreground">Crédito de Penalidade</span>
-                          <span className={user.penalty_credit <= 20 ? 'text-red-500 font-bold' : 'text-foreground'}>
-                            {user.penalty_credit || 0} / 100
-                          </span>
-                        </div>
-                        <Progress value={user.penalty_credit || 100} className="h-2" />
-                      </div>
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={async () => {
-                            await supabase.from('profiles').update({ penalty_credit: 100 }).eq('id', user.id);
-                            fetchData();
-                          }}
-                        >
-                          <Unlock size={14} className="mr-1" /> Desbloquear
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={async () => {
-                            if (confirm('Tem certeza que deseja banir PERMANENTEMENTE este utilizador? Esta ação não pode ser desfeita e o utilizador será eliminado completamente!')) {
-                              await handleDeleteUser(user);
-                              fetchData();
-                            }
-                          }}
-                        >
-                          <Ban size={14} className="mr-1" /> Banir
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* NEW TASKS */}
-        {panel === 'newTasks' && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
-                <ArrowLeft size={16} /> Voltar
-              </button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  setIsRefreshing(true);
-                  await fetchData();
-                  setIsRefreshing(false);
-                }}
-                disabled={isRefreshing}
-                className="gap-2"
-              >
-                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-                Atualizar
-              </Button>
-            </div>
-            <h2 className="text-2xl font-bold mb-2 font-display">Tarefas Ativas</h2>
-            <p className="text-muted-foreground mb-6">Defina o número de tarefas e os respetivos links do YouTube.</p>
-
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Form to add new tasks */}
-              <div className="glass rounded-2xl p-6 space-y-6">
-                <div>
-                  <label className="text-sm font-bold text-foreground mb-2 block">Número de Tarefas</label>
-                  <div className="flex gap-2">
-                    <Input
-                      type="number"
-                      min="1"
-                      max="50"
-                      value={taskCount}
-                      onChange={e => {
-                        const count = Math.max(1, parseInt(e.target.value) || 1);
-                        setTaskCount(count);
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        setIsRefreshing(true);
+                        await fetchData();
+                        setIsRefreshing(false);
                       }}
-                      className="bg-secondary/50 w-24"
-                    />
-                    <Button variant="outline" onClick={() => {
-                      const newLinks = Array(taskCount).fill('');
-                      taskLinks.forEach((link, i) => { if (i < taskCount) newLinks[i] = link; });
-                      setTaskLinks(newLinks);
-
-                      const newTypes = Array(taskCount).fill('video');
-                      taskTypes.forEach((type, i) => { if (i < taskCount) newTypes[i] = type; });
-                      setTaskTypes(newTypes);
-
-                      const newTimes = Array(taskCount).fill(90);
-                      taskRequiredTimes.forEach((time, i) => { if (i < taskCount) newTimes[i] = time; });
-                      setTaskRequiredTimes(newTimes);
-
-                      toast.info(`Campos ajustados para ${taskCount} tarefas.`);
-                    }}>
-                      Ajustar Campos
+                      disabled={isRefreshing}
+                      className="gap-2"
+                    >
+                      <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                      Atualizar
                     </Button>
                   </div>
                 </div>
-
-                <div className="space-y-3 max-h-[400px] overflow-auto pr-2">
-                  {taskLinks.map((link, i) => (
-                    <div key={i} className="space-y-2 p-3 bg-secondary/30 rounded-lg">
-                      <label className="text-xs text-muted-foreground mb-1 block">Link da Tarefa {i + 1}</label>
-                      <Input
-                        placeholder="https://www.youtube.com/watch?v=..."
-                        value={link}
-                        onChange={e => {
-                          const newLinks = [...taskLinks];
-                          newLinks[i] = e.target.value;
-                          setTaskLinks(newLinks);
-                        }}
-                        className="bg-secondary/50"
-                      />
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <label className="text-xs text-muted-foreground mb-1 block">Tipo</label>
-                          <select
-                            value={taskTypes[i]}
-                            onChange={e => {
-                              const newTypes = [...taskTypes];
-                              newTypes[i] = e.target.value;
-                              setTaskTypes(newTypes);
-                            }}
-                            className="w-full bg-secondary/50 rounded-lg px-3 py-2 text-sm"
-                          >
-                            <option value="video">Vídeo YouTube</option>
-                            <option value="link">Link Normal</option>
-                          </select>
-                        </div>
-                        <div className="flex-1">
-                          <label className="text-xs text-muted-foreground mb-1 block">Tempo (seg)</label>
-                          <Input
-                            type="number"
-                            min={30}
-                            max={600}
-                            value={taskRequiredTimes[i] || 90}
-                            onChange={e => {
-                              const newTimes = [...taskRequiredTimes];
-                              newTimes[i] = parseInt(e.target.value) || 90;
-                              setTaskRequiredTimes(newTimes);
-                            }}
-                            className="bg-secondary/50"
-                          />
-                        </div>
+                <h2 className="text-2xl font-bold mb-4 font-display">Publicidades Recebidas ({filteredAds.length})</h2>
+                <div className="mb-6">
+                  <Input
+                    type="text"
+                    placeholder="Pesquisar por nome ou email..."
+                    value={adSearchQuery}
+                    onChange={(e) => setAdSearchQuery(e.target.value)}
+                    className="max-w-md"
+                  />
+                </div>
+                <div className="space-y-4">
+                  {filteredAds.map(ad => (
+                    <div
+                      key={ad.id}
+                      className={`glass rounded-2xl p-6 cursor-pointer transition-all hover:scale-[1.01] ${ad.is_read !== true ? 'border-l-4 border-l-blue-500 bg-blue-500/5' : ''}`}
+                      onClick={() => {
+                        if (ad.is_read !== true) {
+                          markAdAsRead(ad.id);
+                        }
+                      }}
+                    >
+                      <div className="grid gap-2 text-sm">
+                        {[
+                          { label: 'Nome', value: ad.name },
+                          { label: 'Empresa', value: ad.company },
+                          { label: 'Email', value: ad.email },
+                          { label: 'Detalhes', value: ad.details },
+                          { label: 'Banco', value: ad.bank },
+                          { label: 'Plano', value: ad.plan || 'N/A' },
+                          { label: 'Data', value: new Date(ad.date).toLocaleString() },
+                        ].map(item => (
+                          <p key={item.label}><span className="text-muted-foreground">{item.label}:</span> <span className="text-foreground">{item.value}</span></p>
+                        ))}
+                      </div>
+                      <div className="flex flex-wrap gap-2 mt-4">
+                        {ad.file_data && (
+                          <>
+                            <Button size="sm" variant="outline" className="text-xs" onClick={() => downloadBase64(ad.file_data, 'publicidade.jpg')}>
+                              <Download size={14} className="mr-1" /> Baixar Publicidade
+                            </Button>
+                            <Button size="sm" variant="outline" className="text-xs" onClick={() => setPreviewFile({ data: ad.file_data, title: 'Arquivo de Publicidade' })}>
+                              <Eye size={14} className="mr-1" /> Ver Publicidade
+                            </Button>
+                          </>
+                        )}
+                        {ad.receipt_data && (
+                          <>
+                            <Button size="sm" variant="outline" className="text-xs" onClick={() => downloadBase64(ad.receipt_data, 'comprovativo.jpg')}>
+                              <Download size={14} className="mr-1" /> Baixar Comprovativo
+                            </Button>
+                            <Button size="sm" variant="outline" className="text-xs" onClick={() => setPreviewFile({ data: ad.receipt_data, title: 'Comprovativo de Pagamento' })}>
+                              <Eye size={14} className="mr-1" /> Ver Comprovativo
+                            </Button>
+                          </>
+                        )}
+                        <Button size="sm" variant="destructive" onClick={() => deleteAd(ad.id)} className="text-xs">
+                          <Trash2 size={14} className="mr-1" /> Apagar
+                        </Button>
                       </div>
                     </div>
                   ))}
+                  {filteredAds.length === 0 && !isLoading && (
+                    <p className="text-muted-foreground">
+                      {adSearchQuery ? 'Nenhuma publicidade encontrada' : 'Nenhuma publicidade recebida'}
+                    </p>
+                  )}
                 </div>
-                <Button onClick={saveTasks} className="w-full btn-glow-accent !rounded-xl">Guardar Novas Tarefas</Button>
               </div>
+            )}
 
-              {/* Existing tasks list */}
-              <div className="glass rounded-2xl p-6 space-y-4">
-                <h3 className="text-lg font-bold text-foreground">Tarefas Registadas ({existingTasks.length})</h3>
-                {existingTasks.length === 0 ? (
-                  <p className="text-muted-foreground text-sm">Nenhuma tarefa registada.</p>
-                ) : (
-                  <div className="space-y-3 max-h-[500px] overflow-auto pr-2">
-                    {existingTasks.map((task, i) => (
-                      <div key={task.id} className="flex items-center gap-3 p-3 bg-secondary/30 rounded-lg">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm font-medium text-foreground truncate">{task.title || `Tarefa ${i + 1}`}</p>
-                            <span className="text-xs text-orange-400 font-medium shrink-0 ml-2">
-                              ⏱ {getRemainingTime(task.expires_at)}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${task.task_type === 'video' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
-                              {task.task_type === 'video' ? '🎬 Vídeo' : '🔗 Link'}
-                            </span>
-                            {task.task_type === 'video' && task.required_time && (
-                              <span className="text-xs text-muted-foreground">
-                                {task.required_time}s mínimo
-                              </span>
+            {/* MESSAGES - Support Messages */}
+            {panel === 'messages' && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                    <ArrowLeft size={16} /> Voltar
+                  </button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      setIsRefreshing(true);
+                      await fetchData();
+                      setIsRefreshing(false);
+                    }}
+                    disabled={isRefreshing}
+                    className="gap-2"
+                  >
+                    <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                    Atualizar
+                  </Button>
+                </div>
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-2xl font-bold font-display">Mensagens de Suporte ({unreadMessagesCount > 0 ? `${unreadMessagesCount} nova(s)` : 'Todas vistas'})</h2>
+                  {supportMessages.length > 0 && (
+                    <Button variant="destructive" size="sm" onClick={deleteAllMessages} className="gap-2">
+                      <Trash2 size={16} /> Apagar Todas
+                    </Button>
+                  )}
+                </div>
+                <div className="space-y-4">
+                  {supportMessages.map(msg => (
+                    <div key={msg.id} className={`glass rounded-2xl p-6 ${!msg.is_read ? 'border-l-4 border-l-yellow-500' : ''}`}>
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-foreground">{msg.name}</p>
+                            {msg.user_id && (
+                              <span className="text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded">Afiliado</span>
+                            )}
+                            {!msg.user_id && (
+                              <span className="text-xs bg-gray-500/20 text-gray-400 px-2 py-0.5 rounded">Visitante</span>
                             )}
                           </div>
-                          <a
-                            href={task.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-xs text-primary hover:underline truncate block"
-                          >
-                            {task.url}
-                          </a>
+                          <p className="text-sm text-muted-foreground">{msg.email}</p>
                         </div>
-                        <Button
-                          variant="destructive"
-                          size="sm"
-                          onClick={() => deleteTask(task.id)}
-                        >
-                          <Trash2 size={14} />
+                        <span className="text-xs text-muted-foreground bg-secondary/50 px-2 py-1 rounded">
+                          {new Date(msg.created_at).toLocaleString()}
+                        </span>
+                        {!msg.is_read && (
+                          <span className="text-xs bg-yellow-500/20 text-yellow-400 px-2 py-0.5 rounded">
+                            Nova
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <p><span className="text-muted-foreground">Assunto:</span> <span className="text-foreground">{msg.subject}</span></p>
+                        <div className="bg-secondary/30 p-3 rounded-lg mt-2">
+                          <p className="text-foreground whitespace-pre-wrap">{msg.message}</p>
+                        </div>
+
+                        {/* Reply Section */}
+                        {msg.reply && (
+                          <div className="bg-green-500/10 border border-green-500/20 p-3 rounded-lg mt-2">
+                            <p className="text-xs text-green-400 font-bold mb-1">Resposta do Suporte:</p>
+                            <p className="text-foreground whitespace-pre-wrap text-sm">{msg.reply}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {msg.replied_at && new Date(msg.replied_at).toLocaleString()}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex gap-2 mt-4">
+                        {msg.user_id ? (
+                          replyingTo === msg.id ? (
+                            <div className="flex-1 space-y-2">
+                              <Textarea
+                                placeholder="Digite a sua resposta..."
+                                value={replyText}
+                                onChange={e => setReplyText(e.target.value)}
+                                className="text-xs"
+                                rows={3}
+                              />
+                              <div className="flex gap-2">
+                                <Button size="sm" onClick={() => replyMessage(msg.id)} className="text-xs bg-green-600 hover:bg-green-700">
+                                  Enviar Resposta
+                                </Button>
+                                <Button size="sm" variant="outline" onClick={() => { setReplyingTo(null); setReplyText(''); }} className="text-xs">
+                                  Cancelar
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs"
+                              onClick={() => { markAsRead(msg.id); setReplyingTo(msg.id); }}
+                            >
+                              <MessageSquare size={14} className="mr-1" /> Responder
+                            </Button>
+                          )
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-xs opacity-50"
+                            disabled
+                            title="Só pode responder a mensagens de afiliados"
+                          >
+                            <MessageSquare size={14} className="mr-1" /> Responder
+                          </Button>
+                        )}
+                        {!msg.is_read && (
+                          <Button size="sm" variant="secondary" onClick={() => markAsRead(msg.id)} className="text-xs">
+                            <Check size={14} className="mr-1" /> Marcar como lida
+                          </Button>
+                        )}
+                        <Button size="sm" variant="destructive" onClick={() => deleteMessage(msg.id)} className="text-xs">
+                          <Trash2 size={14} className="mr-1" /> Apagar
                         </Button>
+                      </div>
+                    </div>
+                  ))}
+                  {supportMessages.length === 0 && !isLoading && <p className="text-muted-foreground">Nenhuma mensagem de suporte recebida</p>}
+                </div>
+              </div>
+            )}
+
+            {/* BLOCKED USERS */}
+            {panel === 'blocked' && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                    <ArrowLeft size={16} /> Voltar
+                  </button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      setIsRefreshing(true);
+                      await fetchData();
+                      setIsRefreshing(false);
+                    }}
+                    disabled={isRefreshing}
+                    className="gap-2"
+                  >
+                    <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                    Atualizar
+                  </Button>
+                </div>
+                <h2 className="text-2xl font-bold mb-2 font-display">Lista de Bloqueios</h2>
+                <p className="text-muted-foreground mb-4">Utilizadores com crédito de penalidade igual ou inferior a 20.</p>
+
+                {/* Search Input */}
+                <div className="mb-6">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" size={18} />
+                    <Input
+                      placeholder="Pesquisar por nome ou email..."
+                      value={blockedSearchQuery}
+                      onChange={(e) => setBlockedSearchQuery(e.target.value)}
+                      className="pl-10"
+                    />
+                  </div>
+                </div>
+
+                {blockedUsers.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Ban size={48} className="mx-auto text-muted-foreground mb-4" />
+                    <p className="text-muted-foreground">Nenhum utilizador bloqueado</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {blockedUsers.filter(u =>
+                      !blockedSearchQuery ||
+                      (u.full_name || u.username || '').toLowerCase().includes(blockedSearchQuery.toLowerCase()) ||
+                      (u.email || '').toLowerCase().includes(blockedSearchQuery.toLowerCase())
+                    ).map(user => (
+                      <div key={user.id} className="glass rounded-xl p-4 flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                          <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center">
+                            <span className="text-red-600 dark:text-red-400 font-bold text-lg">
+                              {(user.full_name || user.username || user.email || 'U').charAt(0).toUpperCase()}
+                            </span>
+                          </div>
+                          <div>
+                            <p className="font-semibold">{user.full_name || user.username || 'Sem nome'}</p>
+                            <p className="text-sm text-muted-foreground">{user.email}</p>
+                            <p className="text-sm text-green-500 font-bold">Saldo: {parseFloat(user.balance || 0).toFixed(2)} Kz</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-4">
+                          <div className="w-48">
+                            <div className="flex justify-between text-sm mb-1">
+                              <span className="text-muted-foreground">Crédito de Penalidade</span>
+                              <span className={user.penalty_credit <= 20 ? 'text-red-500 font-bold' : 'text-foreground'}>
+                                {user.penalty_credit || 0} / 100
+                              </span>
+                            </div>
+                            <Progress value={user.penalty_credit || 100} className="h-2" />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={async () => {
+                                await supabase.from('profiles').update({ penalty_credit: 100 }).eq('id', user.id);
+                                fetchData();
+                              }}
+                            >
+                              <Unlock size={14} className="mr-1" /> Desbloquear
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={async () => {
+                                if (confirm('Tem certeza que deseja banir PERMANENTEMENTE este utilizador? Esta ação não pode ser desfeita e o utilizador será eliminado completamente!')) {
+                                  await handleDeleteUser(user);
+                                  fetchData();
+                                }
+                              }}
+                            >
+                              <Ban size={14} className="mr-1" /> Banir
+                            </Button>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
                 )}
               </div>
-            </div>
-          </div>
-        )}
+            )}
 
-        {/* WITHDRAWALS */}
-        {panel === 'withdrawals' && (
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
-                <ArrowLeft size={16} /> Voltar
-              </button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={async () => {
-                  setIsRefreshing(true);
-                  await fetchData();
-                  setIsRefreshing(false);
-                }}
-                disabled={isRefreshing}
-                className="gap-2"
-              >
-                <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
-                Atualizar
-              </Button>
-            </div>
-            <h2 className="text-2xl font-bold mb-6 font-display">Pedidos de Saque ({withdrawals.filter(w => w.status === 'pending').length} pendentes)</h2>
-            <div className="space-y-4">
-              {withdrawals.filter(w => w.status === 'pending').map(w => (
-                <div key={w.id} className="glass rounded-2xl p-4">
-                  <div className="flex items-center justify-between">
+            {/* NEW TASKS */}
+            {panel === 'newTasks' && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                    <ArrowLeft size={16} /> Voltar
+                  </button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      setIsRefreshing(true);
+                      await fetchData();
+                      setIsRefreshing(false);
+                    }}
+                    disabled={isRefreshing}
+                    className="gap-2"
+                  >
+                    <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                    Atualizar
+                  </Button>
+                </div>
+                <h2 className="text-2xl font-bold mb-2 font-display">Tarefas Ativas</h2>
+                <p className="text-muted-foreground mb-6">Defina o número de tarefas e os respetivos links do YouTube.</p>
+
+                <div className="grid md:grid-cols-2 gap-6">
+                  {/* Form to add new tasks */}
+                  <div className="glass rounded-2xl p-6 space-y-6">
                     <div>
-                      <p className="font-medium text-foreground">{w.profiles?.full_name || w.profiles?.email}</p>
-                      <p className="text-sm text-muted-foreground">Email: {w.profiles?.email}</p>
-                      <p className="text-sm text-foreground font-bold">{parseFloat(w.amount || 0).toFixed(2)} Kz</p>
-                      <p className="text-xs text-muted-foreground">Conta/IBAN: {w.bank_account}</p>
-                      <p className="text-xs text-muted-foreground">{new Date(w.created_at).toLocaleString()}</p>
+                      <label className="text-sm font-bold text-foreground mb-2 block">Número de Tarefas</label>
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          min="1"
+                          max="50"
+                          value={taskCount}
+                          onChange={e => {
+                            const count = Math.max(1, parseInt(e.target.value) || 1);
+                            setTaskCount(count);
+                          }}
+                          className="bg-secondary/50 w-24"
+                        />
+                        <Button variant="outline" onClick={() => {
+                          const newLinks = Array(taskCount).fill('');
+                          taskLinks.forEach((link, i) => { if (i < taskCount) newLinks[i] = link; });
+                          setTaskLinks(newLinks);
+
+                          const newTypes = Array(taskCount).fill('video');
+                          taskTypes.forEach((type, i) => { if (i < taskCount) newTypes[i] = type; });
+                          setTaskTypes(newTypes);
+
+                          const newTimes = Array(taskCount).fill(90);
+                          taskRequiredTimes.forEach((time, i) => { if (i < taskCount) newTimes[i] = time; });
+                          setTaskRequiredTimes(newTimes);
+
+                          toast.info(`Campos ajustados para ${taskCount} tarefas.`);
+                        }}>
+                          Ajustar Campos
+                        </Button>
+                      </div>
                     </div>
-                    <div className="flex gap-2">
-                      <Button size="sm" onClick={() => approveWithdrawal(w)} className="bg-green-600 hover:bg-green-700">
-                        <Check size={16} />
-                      </Button>
-                      <Button size="sm" variant="destructive" onClick={() => rejectWithdrawal(w)}>
-                        <X size={16} />
-                      </Button>
+
+                    <div className="space-y-3 max-h-[400px] overflow-auto pr-2">
+                      {taskLinks.map((link, i) => (
+                        <div key={i} className="space-y-2 p-3 bg-secondary/30 rounded-lg">
+                          <label className="text-xs text-muted-foreground mb-1 block">Link da Tarefa {i + 1}</label>
+                          <Input
+                            placeholder="https://www.youtube.com/watch?v=..."
+                            value={link}
+                            onChange={e => {
+                              const newLinks = [...taskLinks];
+                              newLinks[i] = e.target.value;
+                              setTaskLinks(newLinks);
+                            }}
+                            className="bg-secondary/50"
+                          />
+                          <div className="flex gap-2">
+                            <div className="flex-1">
+                              <label className="text-xs text-muted-foreground mb-1 block">Tipo</label>
+                              <select
+                                value={taskTypes[i]}
+                                onChange={e => {
+                                  const newTypes = [...taskTypes];
+                                  newTypes[i] = e.target.value;
+                                  setTaskTypes(newTypes);
+                                }}
+                                className="w-full bg-secondary/50 rounded-lg px-3 py-2 text-sm"
+                              >
+                                <option value="video">Vídeo YouTube</option>
+                                <option value="link">Link Normal</option>
+                              </select>
+                            </div>
+                            <div className="flex-1">
+                              <label className="text-xs text-muted-foreground mb-1 block">Tempo (seg)</label>
+                              <Input
+                                type="number"
+                                min={30}
+                                max={600}
+                                value={taskRequiredTimes[i] || 90}
+                                onChange={e => {
+                                  const newTimes = [...taskRequiredTimes];
+                                  newTimes[i] = parseInt(e.target.value) || 90;
+                                  setTaskRequiredTimes(newTimes);
+                                }}
+                                className="bg-secondary/50"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
+                    <Button onClick={saveTasks} className="w-full btn-glow-accent !rounded-xl">Guardar Novas Tarefas</Button>
+                  </div>
+
+                  {/* Existing tasks list */}
+                  <div className="glass rounded-2xl p-6 space-y-4">
+                    <h3 className="text-lg font-bold text-foreground">Tarefas Registadas ({existingTasks.length})</h3>
+                    {existingTasks.length === 0 ? (
+                      <p className="text-muted-foreground text-sm">Nenhuma tarefa registada.</p>
+                    ) : (
+                      <div className="space-y-3 max-h-[500px] overflow-auto pr-2">
+                        {existingTasks.map((task, i) => (
+                          <div key={task.id} className="flex items-center gap-3 p-3 bg-secondary/30 rounded-lg">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center justify-between">
+                                <p className="text-sm font-medium text-foreground truncate">{task.title || `Tarefa ${i + 1}`}</p>
+                                <span className="text-xs text-orange-400 font-medium shrink-0 ml-2">
+                                  ⏱ {getRemainingTime(task.expires_at)}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${task.task_type === 'video' ? 'bg-red-500/20 text-red-400' : 'bg-blue-500/20 text-blue-400'}`}>
+                                  {task.task_type === 'video' ? '🎬 Vídeo' : '🔗 Link'}
+                                </span>
+                                {task.task_type === 'video' && task.required_time && (
+                                  <span className="text-xs text-muted-foreground">
+                                    {task.required_time}s mínimo
+                                  </span>
+                                )}
+                              </div>
+                              <a
+                                href={task.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-primary hover:underline truncate block"
+                              >
+                                {task.url}
+                              </a>
+                            </div>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => deleteTask(task.id)}
+                            >
+                              <Trash2 size={14} />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
-              ))}
-              {withdrawals.length === 0 && !isLoading && <p className="text-muted-foreground">Nenhum pedido de saque pendente</p>}
-            </div>
+              </div>
+            )}
+
+            {/* WITHDRAWALS */}
+            {panel === 'withdrawals' && (
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <button onClick={() => setPanel(null)} className="flex items-center gap-2 text-muted-foreground hover:text-primary text-sm">
+                    <ArrowLeft size={16} /> Voltar
+                  </button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={async () => {
+                      setIsRefreshing(true);
+                      await fetchData();
+                      setIsRefreshing(false);
+                    }}
+                    disabled={isRefreshing}
+                    className="gap-2"
+                  >
+                    <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+                    Atualizar
+                  </Button>
+                </div>
+                <h2 className="text-2xl font-bold mb-6 font-display">Pedidos de Saque ({withdrawals.filter(w => w.status === 'pending').length} pendentes)</h2>
+                <div className="space-y-4">
+                  {withdrawals.filter(w => w.status === 'pending').map(w => (
+                    <div key={w.id} className="glass rounded-2xl p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-foreground">{w.profiles?.full_name || w.profiles?.email}</p>
+                          <p className="text-sm text-muted-foreground">Email: {w.profiles?.email}</p>
+                          <p className="text-sm text-foreground font-bold">{parseFloat(w.amount || 0).toFixed(2)} Kz</p>
+                          <p className="text-xs text-muted-foreground">Conta/IBAN: {w.bank_account}</p>
+                          <p className="text-xs text-muted-foreground">{new Date(w.created_at).toLocaleString()}</p>
+                        </div>
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={() => approveWithdrawal(w)} className="bg-green-600 hover:bg-green-700">
+                            <Check size={16} />
+                          </Button>
+                          <Button size="sm" variant="destructive" onClick={() => rejectWithdrawal(w)}>
+                            <X size={16} />
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {withdrawals.length === 0 && !isLoading && <p className="text-muted-foreground">Nenhum pedido de saque pendente</p>}
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </div>
 
       {/* File Preview Modal */}
-      {previewFile && (
-        <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center p-4">
-          <div className="w-full h-full max-w-[95vw] max-h-[95vh] flex flex-col">
-            <div className="p-3 sm:p-4 border-b border-border flex items-center justify-between bg-background/80 backdrop-blur rounded-t-lg shrink-0">
-              <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
-                <h3 className="font-bold text-foreground truncate text-sm sm:text-base">{previewFile.title}</h3>
+        {
+          previewFile && (
+            <div className="fixed inset-0 z-[99999] bg-black/95 flex items-center justify-center p-4">
+              <div className="w-full h-full max-w-[95vw] max-h-[95vh] flex flex-col">
+                <div className="p-3 sm:p-4 border-b border-border flex items-center justify-between bg-background/80 backdrop-blur rounded-t-lg shrink-0">
+                  <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+                    <h3 className="font-bold text-foreground truncate text-sm sm:text-base">{previewFile.title}</h3>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setPreviewFile(null)} className="gap-2 shrink-0 ml-2">
+                    <ArrowLeft size={16} /> <span className="hidden sm:inline">Voltar</span>
+                  </Button>
+                </div>
+                <div className="flex-1 bg-black/30 flex items-center justify-center p-2 sm:p-4 overflow-auto">
+                  {previewFile.data.startsWith('data:image/') || previewFile.data.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i) ? (
+                    <img
+                      src={previewFile.data}
+                      alt="Preview"
+                      className="max-w-[90vw] max-h-[85vh] object-contain shadow-2xl rounded-lg"
+                    />
+                  ) : previewFile.data.startsWith('data:video/') || previewFile.data.includes('youtube.com/embed') || previewFile.data.includes('player.vimeo') || previewFile.data.match(/\.(mp4|webm|ogg)$/i) ? (
+                    <video
+                      src={previewFile.data}
+                      controls
+                      className="max-w-[90vw] max-h-[85vh] rounded-lg"
+                      autoPlay={false}
+                    />
+                  ) : (
+                    <iframe
+                      src={previewFile.data}
+                      title="Document Preview"
+                      className="w-full h-full min-h-[500px] rounded-lg bg-white"
+                    />
+                  )}
+                </div>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setPreviewFile(null)} className="gap-2 shrink-0 ml-2">
-                <ArrowLeft size={16} /> <span className="hidden sm:inline">Voltar</span>
-              </Button>
+              <div className="absolute inset-0 -z-10" onClick={() => setPreviewFile(null)} />
             </div>
-            <div className="flex-1 bg-black/30 flex items-center justify-center p-2 sm:p-4 overflow-auto">
-              {previewFile.data.startsWith('data:image/') || previewFile.data.match(/\.(jpg|jpeg|png|gif|webp|bmp|svg)$/i) ? (
-                <img
-                  src={previewFile.data}
-                  alt="Preview"
-                  className="max-w-[90vw] max-h-[85vh] object-contain shadow-2xl rounded-lg"
-                />
-              ) : previewFile.data.startsWith('data:video/') || previewFile.data.includes('youtube.com/embed') || previewFile.data.includes('player.vimeo') || previewFile.data.match(/\.(mp4|webm|ogg)$/i) ? (
-                <video
-                  src={previewFile.data}
-                  controls
-                  className="max-w-[90vw] max-h-[85vh] rounded-lg"
-                  autoPlay={false}
-                />
-              ) : (
-                <iframe
-                  src={previewFile.data}
-                  title="Document Preview"
-                  className="w-full h-full min-h-[500px] rounded-lg bg-white"
-                />
-              )}
-            </div>
-          </div>
-          <div className="absolute inset-0 -z-10" onClick={() => setPreviewFile(null)} />
-        </div>
-      )}
-    </div>
-  );
+          )
+        }
+      </div >
+      );
 };
 
-export default AdminDashboard;
+      export default AdminDashboard;
