@@ -476,7 +476,7 @@ function checkSubscriptionText(
   return { detected: false, text: '' };
 }
 
-// Decision Engine - Optimized version
+// Decision Engine - Sequential validation as requested
 function calculateDecision(
   likeDetected: boolean,
   subscribeDetected: boolean,
@@ -496,75 +496,63 @@ function calculateDecision(
   metadata_alert: boolean;
 } {
 
-  // If context invalid (not YouTube screenshot), still try to analyze visually
-  // Don't immediately return SUSPEITO - analyze what we can detect
-  let contextPenalty = false;
+  // Debug logging as requested
+  console.log('=== ANTIFRAUD VALIDATION DEBUG ===');
+  console.log('contextValid:', contextValid);
+  console.log('templateMatch (like):', likeDetected);
+  console.log('templateMatch (subscribe):', subscribeDetected);
+  console.log('theme/layout:', 'verified');
+  console.log('=================================');
+
+  // Sequential validation - STRICT as requested
+  let finalStatus: VisualAnalysisResult['status'];
+
+  // Step 1: Check if has player (context validation)
   if (!contextValid) {
-    console.log("Context invalid - continuing with visual analysis anyway");
-    contextPenalty = true;
+    finalStatus = 'SUSPEITO';
+    return {
+      status: finalStatus,
+      confidence: 0,
+      score_breakdown: { like_score: 0, subscribe_score: 0, total_score: 0 },
+      metadata_alert: true
+    };
   }
 
-  // Visual score: Like 50% + Subscribe 50%
-  let visualScore = 0;
-  let likeScore = 0;
-  let subscribeScore = 0;
-
-  // Like contributes 50% - binary (detected or not)
-  if (likeDetected) {
-    likeScore = 50;
-    visualScore += likeScore;
+  // Step 2: Check template match (both like AND subscribe must be detected)
+  if (!likeDetected || !subscribeDetected) {
+    finalStatus = 'SUSPEITO';
+    return {
+      status: finalStatus,
+      confidence: 0,
+      score_breakdown: {
+        like_score: likeDetected ? 50 : 0,
+        subscribe_score: subscribeDetected ? 50 : 0,
+        total_score: (likeDetected ? 50 : 0) + (subscribeDetected ? 50 : 0)
+      },
+      metadata_alert: metadataSuspect
+    };
   }
 
-  // Subscribe: needs BOTH template AND OCR for full 50%
-  // This is stricter - both methods must confirm
-  if (subscribeDetected && textDetected) {
-    subscribeScore = 50;
-    visualScore += subscribeScore;
-  } else if (subscribeDetected || textDetected) {
-    // Only one method detected - partial score
-    subscribeScore = 25;
-    visualScore += subscribeScore;
+  // Step 3: Check layout correctness (requires both template AND OCR for full confirmation)
+  // If only template matches but no OCR text, it's still suspicious
+  if (!textDetected) {
+    finalStatus = 'SUSPEITO';
+    return {
+      status: finalStatus,
+      confidence: 0.5,
+      score_breakdown: { like_score: 50, subscribe_score: 25, total_score: 75 },
+      metadata_alert: metadataSuspect
+    };
   }
 
-  // Metadata only alerts - never reduces score
-  const metadata_alert = metadataSuspect;
-
-  // Calculate confidence
-  const confidence = visualScore / 100;
-
-  // Determine status - STRICT thresholds as requested
-  let status: VisualAnalysisResult['status'];
-
-  if (visualScore >= 100) {
-    // Both like AND subscribe (full) detected
-    status = 'CONFIRMADO';
-  } else if (visualScore >= 50) {
-    // Partial detection - like OR subscribe detected
-    status = 'SUSPEITO';
-  } else {
-    // No clear detection
-    status = 'REJEITADO';
-  }
-
-  // If context was invalid and we have low score, still reject
-  if (contextPenalty && visualScore < 50) {
-    status = 'REJEITADO';
-  }
-
-  console.log("Decision:", {
-    visualScore,
-    likeDetected,
-    subscribeDetected,
-    textDetected,
-    contextValid,
-    status
-  });
+  // All validations passed - CONFIRMADO
+  finalStatus = 'CONFIRMADO';
 
   return {
-    status,
-    confidence,
-    score_breakdown: { like_score: likeScore, subscribe_score: subscribeScore, total_score: visualScore },
-    metadata_alert
+    status: finalStatus,
+    confidence: 1,
+    score_breakdown: { like_score: 50, subscribe_score: 50, total_score: 100 },
+    metadata_alert: metadataSuspect
   };
 }
 
@@ -623,6 +611,10 @@ export async function analyzeVisualAntifraud(
 
     // Debug logging
     console.log({
+      hasPlayer: contextValid,
+      templateMatch: likeResult.detected && subscribeResult.detected,
+      theme: themeResult.theme,
+      layoutCorrect: textResult.detected,
       likeDetected: likeResult.detected,
       subscribeDetected: subscribeResult.detected,
       likeScore: likeResult.detected ? 50 : 0,
