@@ -318,6 +318,9 @@ export default function VideoTaskPlayer({
 
   useEffect(() => {
     if (isOpen && taskId && userId) {
+      // Reset toast shown flag when opening video task
+      toastShownRef.current = false;
+      
       // Check if there's a saved time for this task
       const savedTime = localStorage.getItem(getWatchTimeKey(userId, taskId));
 
@@ -345,6 +348,7 @@ export default function VideoTaskPlayer({
   // Track watch sessions for anti-fraud
   const watchSessionRef = useRef<{ start: number, end: number | null }[]>([]);
   const lastTimeRef = useRef<number>(0);
+  const toastShownRef = useRef<boolean>(false);
 
   // Enhanced time update with session tracking
   const handleTimeUpdateInternal = useCallback((seconds: number) => {
@@ -365,18 +369,22 @@ export default function VideoTaskPlayer({
     }
     lastTimeRef.current = seconds;
 
-    if (seconds >= requiredTime && !isVideoCompleted) {
+    if (seconds >= requiredTime && !isVideoCompleted && !toastShownRef.current) {
       setIsVideoCompleted(true);
       markVideoCompleted();
+      toastShownRef.current = true;
       toast.info('Vídeo assistido! Agora abra o vídeo no YouTube para habilitar o envio.');
     }
     onTimeUpdate?.(seconds);
-  }, [requiredTime, canSubmit, onReadyToSubmit, onTimeUpdate, markVideoCompleted]);
+  }, [requiredTime, canSubmit, onReadyToSubmit, onTimeUpdate, markVideoCompleted, isVideoCompleted]);
 
   const handleVideoComplete = useCallback(() => {
-    setIsVideoCompleted(true);
-    markVideoCompleted();
-    toast.info('Vídeo assistido! Agora abra o vídeo no YouTube para habilitar o envio.');
+    if (!toastShownRef.current) {
+      setIsVideoCompleted(true);
+      markVideoCompleted();
+      toastShownRef.current = true;
+      toast.info('Vídeo assistido! Agora abra o vídeo no YouTube para habilitar o envio.');
+    }
   }, [markVideoCompleted]);
 
 
